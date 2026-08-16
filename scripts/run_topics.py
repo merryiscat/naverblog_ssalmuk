@@ -18,12 +18,12 @@ def main() -> None:
     result = topics.discover(conn)
 
     print(f"\n주제 발굴 결과 (상위 {len(result)}개)")
-    print(f"{'키워드':<24} {'검색량':>8} {'문서수':>10} {'골든':>7} {'LLM':>5}  근거")
-    print("-" * 100)
+    print(f"{'분야':<6} {'키워드':<22} {'검색량':>8} {'문서수':>10} {'골든':>7} {'LLM':>5}  근거")
+    print("-" * 105)
     for i, c in enumerate(result):
         mark = "★" if i < 2 else ("☆" if i == 2 else " ")
-        print(f"{mark} {c['keyword']:<22} {c['volume']:>8,} {c['docs']:>10,} "
-              f"{c['golden']:>7.2f} {c['llm_score']:>5.2f}  {c['reason'][:40]}")
+        print(f"{mark} [{c['category']}] {c['keyword']:<20} {c['volume']:>8,} {c['docs']:>10,} "
+              f"{c['golden']:>7.2f} {c['llm_score']:>5.2f}  {c['reason'][:38]}")
 
     print(f"\n이번 달 비용 누계: ${guardrails.month_cost_usd(conn):.4f} "
           f"(남은 예산 ${guardrails.budget_remaining_usd(conn):.2f})")

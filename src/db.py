@@ -109,5 +109,19 @@ def connect() -> sqlite3.Connection:
     config.ensure_dirs()
     conn = sqlite3.connect(config.DB_PATH)
     conn.row_factory = sqlite3.Row  # 컬럼 이름으로 값을 꺼낼 수 있게
+    # 여러 모듈이 각자 연결을 여는 구조(예: 파이프라인 + LLM 비용 기록)라
+    # WAL 모드 + 대기 시간으로 'database is locked' 충돌을 막는다
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """기존 DB에 나중에 추가된 컬럼을 반영한다 (없을 때만 추가 — 멱등)."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(topics)")}
+    if "category" not in cols:
+        # 메이트 10개 분야 태그 (여행/푸드/레시피/스타일/테크/라이프/컬쳐/미디어/인사이트/취미)
+        conn.execute("ALTER TABLE topics ADD COLUMN category TEXT")
+        conn.commit()

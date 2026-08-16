@@ -25,15 +25,20 @@ def openapi_search(kind: str, query: str, display: int = 10, start: int = 1) -> 
 
     반환 JSON의 total 필드가 곧 '문서수' — 골든키워드 점수의 분모다.
     """
-    r = httpx.get(
-        f"https://openapi.naver.com/v1/search/{kind}.json",
-        params={"query": query, "display": display, "start": start},
-        headers={
-            "X-Naver-Client-Id": config.NAVER_CLIENT_ID,
-            "X-Naver-Client-Secret": config.NAVER_CLIENT_SECRET,
-        },
-        timeout=15,
-    )
+    # 연속 대량 호출 시 429가 나므로 기본 간격 + 지수 백오프 (일 한도와 별개의 초당 제한)
+    for attempt in range(4):
+        time.sleep(0.25 if attempt == 0 else 2 * (2 ** (attempt - 1)))
+        r = httpx.get(
+            f"https://openapi.naver.com/v1/search/{kind}.json",
+            params={"query": query, "display": display, "start": start},
+            headers={
+                "X-Naver-Client-Id": config.NAVER_CLIENT_ID,
+                "X-Naver-Client-Secret": config.NAVER_CLIENT_SECRET,
+            },
+            timeout=15,
+        )
+        if r.status_code != 429:
+            break
     r.raise_for_status()
     return r.json()
 
@@ -75,11 +80,17 @@ def keyword_stats(hint_keywords: list[str]) -> list[dict]:
     """
     uri = "/keywordstool"
     hints = [k.replace(" ", "") for k in hint_keywords]
-    r = httpx.get(
-        SEARCHAD_BASE + uri,
-        params={"hintKeywords": ",".join(hints), "showDetail": "1"},
-        headers=_searchad_headers("GET", uri),
-        timeout=20,
-    )
+    # 이 API는 호출 빈도 제한이 빡빡하다 (연속 호출 시 429).
+    # 호출 전 기본 간격 + 429면 지수 백오프로 최대 3회 재시도.
+    for attempt in range(4):
+        time.sleep(1.5 if attempt == 0 else 5 * (2 ** (attempt - 1)))
+        r = httpx.get(
+            SEARCHAD_BASE + uri,
+            params={"hintKeywords": ",".join(hints), "showDetail": "1"},
+            headers=_searchad_headers("GET", uri),
+            timeout=20,
+        )
+        if r.status_code != 429:
+            break
     r.raise_for_status()
     return r.json().get("keywordList", [])
