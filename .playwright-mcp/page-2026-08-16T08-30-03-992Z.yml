@@ -1,0 +1,66 @@
+- generic [ref=f1e2]:
+  - link "본문 바로가기" [ref=f1e3] [cursor=pointer]:
+    - /url: "#content"
+  - main [ref=f1e5]:
+    - banner [ref=f1e6]:
+      - link [ref=f1e9] [cursor=pointer]:
+        - /url: https://www.naver.com
+        - heading "네이버" [level=1] [ref=f1e10]
+    - generic [ref=f1e12]:
+      - generic [ref=f1e13]:
+        - list [ref=f1e14]:
+          - listitem [ref=f1e15]:
+            - generic [ref=f1e16]:
+              - generic: 아이디 또는 전화번호
+              - textbox "아이디 또는 전화번호" [active] [ref=f1e18]:
+                - /placeholder: ""
+          - listitem [ref=f1e20]:
+            - generic [ref=f1e21]:
+              - generic: 비밀번호
+              - textbox "비밀번호" [ref=f1e23]
+        - generic [ref=f1e26]:
+          - generic [ref=f1e27]:
+            - checkbox "로그인 상태 유지" [ref=f1e28] [cursor=pointer]
+            - generic [ref=f1e29] [cursor=pointer]: 로그인 상태 유지
+          - generic [ref=f1e30]:
+            - generic [ref=f1e31]: IP 보안
+            - generic [ref=f1e32]:
+              - switch "IP 보안" [checked]
+              - generic [ref=f1e33] [cursor=pointer]: "ON"
+        - list [ref=f1e36]:
+          - listitem [ref=f1e37]:
+            - button "패스키 로그인" [ref=f1e38] [cursor=pointer]
+          - listitem [ref=f1e40]:
+            - button "로그인" [ref=f1e41] [cursor=pointer]
+        - list [ref=f1e44]:
+          - listitem [ref=f1e45]:
+            - link "QR 코드 로그인" [ref=f1e46] [cursor=pointer]:
+              - /url: "#none"
+          - listitem [ref=f1e48]:
+            - link "일회용 번호 로그인" [ref=f1e49] [cursor=pointer]:
+              - /url: "#none"
+      - list [ref=f1e52]:
+        - listitem [ref=f1e53]:
+          - link "아이디 찾기" [ref=f1e54] [cursor=pointer]:
+            - /url: https://nid.naver.com/user2/api/route?m=routeIdInquiry&lang=ko_KR
+        - listitem [ref=f1e56]:
+          - link "비밀번호 찾기" [ref=f1e57] [cursor=pointer]:
+            - /url: https://nid.naver.com/user2/api/route?m=routePwInquiry&lang=ko_KR
+        - listitem [ref=f1e59]:
+          - link "회원가입" [ref=f1e60] [cursor=pointer]:
+            - /url: https://nid.naver.com/account/signup?lang=ko_KR&realname=N&rurl=https%3A%2F%2Fdevelopers.naver.com%2Fapps%2F
+      - iframe [ref=f1e65]:
+        - link [ref=f3e4] [cursor=pointer]:
+          - /url: https://tivan.naver.com/gc/101/dextrI1GULIhoL7wL8IJ5MdiooD8BBfvMKbQByzTR7oDagfkjy84uPCsIW6vTTkWWDgoLwUBOTAkpARO1BK7bIX-d5SO81ZOSB-gIML9zbL75FkB_B-RRNLjxltB_ogQqMQw3b1NBfHnqiSm-_w8eF9ym8wY0qp_ecQU--Xtq4jl9yH0KUpeJ2YY7qjr2vg1ayx9SwV81VOIJcRdOeya9F_PyH17H5lMQmWOH2ZkS7OMbtpWTIkTvC5S5dfsixhl676f2hMlK76jhFojVrEe9-g_EOs6yvLK__P7tMyldRxf13A3YwIWHJ9XHrqrZLH2LsiJ7Pd-2d4SFSIqRsIaTsfKslNLYfe3Ua4r_eODH6gTP90QAJAHIiL7oXY_Erkpsb_xK178iWZDgbgm9JtPazjNB6xgYRn-W3NGqTPcgV9kaQA0dyf6Lx3QwiRRbHZxyAhR3MvJFCZHHYMqDByPACp1RYSJbsXHwrwGzLWFSTvT2E2Ob_bUyW1ZeOOHYJtplRqDyEFjVdtXFlKeV_-beTJANYZFLB_I6XVcW_y4Hf0ksfi_z9cCIY5wRT2BkG0cqs7cuZGueAf6-fNKyE3FNN0XdYNnbXSG6hZoS3x9R12PjMBWUI6c9M5Gf7r8y1B9eUZjpNu931HQL3Uiag50T32DCzmMpQTHHzGwgobHQ3pkHZJ2wN-2rGyYuJlT70pfEkh03DzVkDHWt168syHof8O-pAFwjESebD9wsfeq5BqEqX_j1fr3WeE7PoLmF0JBuDj-PjScOJBaiRnMVo4ILTYfD1Q_mmzkoAYHSG4FkSMjrGLQmxBfB9v2Yd7-kKq0O0D2OYnZ2vihuKf0eZCc0Vez43BTKHAaQ5bZjHeCJylWv-sCiiidvyQhVS01t3BjNGB3wESMD1Yn_nfmiMWWEaLqPlRjIwaGQPCxRwodt_tGbjhvUM8gkmYgZVR6RnjhwIofj0MDSDE0Jk3VI1LLLlW-7z-pZYhsWdyWURJa-3Cab2l_kYjXRaUpvJYgG3pCAG0H9ofqwtMnAPCGVLNW7p-20SesPzIU_zzJLbTzdSIgZUWXFtgLQb7jU_AQfac9/NE
+          - img "네이버플러스스토어 식품·생필품 탑 브랜드 초특가 지금 만나보세요" [ref=f3e5]
+    - generic [ref=f1e66]:
+      - contentinfo [ref=f1e67]:
+        - listitem [ref=f1e68]:
+          - link "스마트봇 상담" [ref=f1e69] [cursor=pointer]:
+            - /url: https://nca.naver.com/chat/account/view
+        - listitem [ref=f1e70]:
+          - link "고객센터" [ref=f1e71] [cursor=pointer]:
+            - /url: https://help.naver.com/service/5640/category/bookmark?lang=ko
+        - listitem [ref=f1e72]:
+          - listbox "언어선택" [ref=f1e73] [cursor=pointer]: 한국어
+      - generic [ref=f1e74]: © NAVER Corp.

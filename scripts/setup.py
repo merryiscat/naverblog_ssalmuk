@@ -139,13 +139,17 @@ def step_env_keys() -> dict:
         else:
             status["openai"] = "건너뜀"
 
-    # --- 네이버 오픈API (P3) ---
+    # --- 네이버 오픈API (P3) — 2026-08 신규 발급 중단 확인됨 ---
+    # 신규 앱 등록의 '사용 API' 목록에서 검색·데이터랩이 제거됐고 (실화면 확인),
+    # 검색 API 신규 제휴도 중단 명시. 기존에 발급받은 키가 있는 경우에만 입력받는다.
+    # 없어도 파이프라인은 검색광고 API + 스크래핑으로 동작한다 (usecases.md P3).
     if config.NAVER_CLIENT_ID and config.NAVER_CLIENT_SECRET:
-        status["naver_openapi"] = "설정됨"
+        status["naver_openapi"] = "설정됨 (기존 발급 키)"
     else:
-        print("\n[네이버 오픈API] https://developers.naver.com/apps 에서 애플리케이션 등록")
-        print("  사용 API에 '검색'과 '데이터랩(검색어 트렌드)'을 추가하세요.")
-        cid = ask("NAVER_CLIENT_ID (건너뛰려면 Enter)")
+        print("\n[네이버 오픈API] 2026-08 기준 검색·데이터랩 신규 발급이 중단됐습니다.")
+        print("  과거에 발급받아 둔 키가 있을 때만 입력하세요. 없으면 그냥 Enter —")
+        print("  검색광고 API와 스크래핑으로 대체 동작합니다.")
+        cid = ask("NAVER_CLIENT_ID (기존 키 보유자만, 없으면 Enter)")
         if cid:
             secret = ask("NAVER_CLIENT_SECRET")
             ok = verify_naver_openapi(cid, secret)
@@ -155,7 +159,7 @@ def step_env_keys() -> dict:
             status["naver_openapi"] = "검증 통과" if ok else "검증 실패 — 키 확인 필요"
             print(f"  → {status['naver_openapi']}")
         else:
-            status["naver_openapi"] = "건너뜀"
+            status["naver_openapi"] = "없음 — 검색광고 API+스크래핑으로 대체 (정상)"
 
     # --- 검색광고 API (P4) — 서명 로직이 필요해 즉석 검증은 C1에서 ---
     if config.SEARCHAD_API_KEY:
