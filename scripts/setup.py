@@ -113,6 +113,24 @@ def verify_telegram(token: str, chat_id: str) -> bool:
     return r.status_code == 200
 
 
+def detect_chat_id(token: str) -> str | None:
+    """봇에게 온 최근 메시지에서 chat_id를 자동으로 찾는다.
+
+    사용자가 봇에게 아무 메시지나 먼저 보내둬야 잡힌다 (getUpdates 활용).
+    """
+    try:
+        r = httpx.get(f"https://api.telegram.org/bot{token}/getUpdates", timeout=15)
+        if r.status_code != 200:
+            return None
+        for update in reversed(r.json().get("result", [])):
+            chat = update.get("message", {}).get("chat", {})
+            if chat.get("id"):
+                return str(chat["id"])
+    except httpx.HTTPError:
+        pass
+    return None
+
+
 def step_env_keys() -> dict:
     """비어 있는 키만 골라 발급 안내 → 입력 → 즉석 검증. 반환: 키별 상태."""
     header("2단계 — API 키 (.env)")
@@ -181,12 +199,20 @@ def step_env_keys() -> dict:
     if config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID:
         status["telegram"] = "설정됨"
     else:
-        print("\n[텔레그램] @BotFather에게 /newbot 으로 봇 생성 → 토큰 복사")
-        print("  chat_id는 봇에게 아무 말이나 보낸 뒤 다음 주소에서 확인:")
-        print("  https://api.telegram.org/bot<토큰>/getUpdates 의 chat.id 값")
+        print("\n[텔레그램] @BotFather에게 /newbot 으로 봇 생성 → 완료 메시지의 토큰 복사")
+        print("  (봇 유저네임(@...봇이름)이 아니라 '123456789:AAE...' 형태의 토큰입니다)")
         token = ask("TELEGRAM_BOT_TOKEN (건너뛰려면 Enter)")
         if token:
-            chat_id = ask("TELEGRAM_CHAT_ID")
+            # chat_id 자동 감지 — 봇에게 먼저 말을 걸어둬야 잡힌다
+            chat_id = detect_chat_id(token)
+            while not chat_id:
+                print("  아직 봇이 받은 메시지가 없습니다.")
+                print("  텔레그램에서 내 봇을 검색해 대화방을 열고 아무 메시지나 보낸 뒤 Enter...")
+                if input().strip().lower() == "q":  # q 입력 시 수동 입력으로 전환
+                    chat_id = ask("TELEGRAM_CHAT_ID 직접 입력")
+                    break
+                chat_id = detect_chat_id(token)
+            print(f"  chat_id 감지: {chat_id}")
             ok = verify_telegram(token, chat_id)
             if ok:
                 save_env("TELEGRAM_BOT_TOKEN", token)
