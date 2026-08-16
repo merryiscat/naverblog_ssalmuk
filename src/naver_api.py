@@ -70,11 +70,14 @@ def keyword_stats(hint_keywords: list[str]) -> list[dict]:
 
     hint_keywords는 최대 5개. 반환: keywordList 배열
     (monthlyPcQcCnt, monthlyMobileQcCnt 등. '< 10'은 문자열로 옴에 주의).
+    ※ 이 API는 공백 포함 키워드를 400으로 거부한다 — 공백을 제거해 보낸다
+      (네이버 키워드도구 UI도 같은 규칙).
     """
     uri = "/keywordstool"
+    hints = [k.replace(" ", "") for k in hint_keywords]
     r = httpx.get(
         SEARCHAD_BASE + uri,
-        params={"hintKeywords": ",".join(hint_keywords), "showDetail": "1"},
+        params={"hintKeywords": ",".join(hints), "showDetail": "1"},
         headers=_searchad_headers("GET", uri),
         timeout=20,
     )
