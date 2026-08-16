@@ -6,7 +6,8 @@
 
 ## 레퍼런스
 - [references.md](references.md) — 유사 구현체·GEO 지식·메이트 사례·제재 신호 수집 그래프 (keep 24 / drop 6 / 미검증 99)
-- raw/ — 원본 불변 보존 (reference-sweep-2026-08-16.json)
+- [mate-analysis.md](mate-analysis.md) — 메이트 도메인 분석: AI 브리핑 노출 조건, 인용 글 구조 케이스 스터디(영화구름), 인용 공백 스나이핑 전략
+- raw/ — 원본 불변 보존 (reference-sweep JSON, AI 브리핑 관찰 스크린샷)
 
 ## 위키 운영
 - [log.md](log.md) — append-only 작업 기록
