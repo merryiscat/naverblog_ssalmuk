@@ -1,0 +1,1539 @@
+{
+  "summary": "기능×지역 매트릭스 병렬 레퍼런스 탐색 + 검증 (naverblog_ssalmuk 킥오프)",
+  "agentCount": 50,
+  "logs": [
+    "탐색 완료: 원시 160건 → 중복 제거 후 129건",
+    "검증 상한 초과로 99건은 미검증 통과(후순위 kind) — 결과에 unverified로 포함",
+    "검증 완료: keep 24 / drop 6 / 미검증 99"
+  ],
+  "result": {
+    "kept": [
+      {
+        "name": "konamgil/naver-blog-mcp",
+        "url": "https://github.com/konamgil/naver-blog-mcp",
+        "platform": "github",
+        "kind": "code",
+        "summary": "Playwright로 네이버 블로그 발행(publish)·예약(schedule)·삭제(delete)를 지원하는 TypeScript MCP 서버. Claude Desktop/Code, Cursor 연동을 명시.",
+        "relevance": "예약 발행까지 포함한 발행 기능 범위 설계(발행/예약/삭제 3종)를 우리 파이프라인의 발행 모듈 인터페이스 설계에 참고.",
+        "signals": "2026-05 생성, 포크 1",
+        "func": "publish",
+        "region": "KR",
+        "verdict": {
+          "exists": true,
+          "active": true,
+          "keep": true,
+          "note": "실재 확인 — TypeScript MCP 서버로 요약과 일치하며 실제 범위는 더 넓다: 발행/예약/삭제 외에 계정 등록·세션 관리(인터랙티브 로그인, AES-256 암호화 저장, 세션 만료 자동 복구)와 SQLite 기반 예약 폴링(cron)까지 12개 툴 제공, npm 패키지명은 @oddeye/naver-blog-mcp. 신호: 2026-05-19 생성, 최종 푸시 2026-05-20(1년 내), 스타 0·포크 1 — 커밋 기준으론 활성이나 사실상 2일 단발 릴리스로 커뮤니티 검증은 없음. 발행 모듈 인터페이스(특히 세션 복구·예약 설계) 참고 가치 있어 keep."
+        }
+      },
+      {
+        "name": "SIMHANSOL/Selenium-NaverBlogAutomaticPosting",
+        "url": "https://github.com/SIMHANSOL/Selenium-NaverBlogAutomaticPosting",
+        "platform": "github",
+        "kind": "code",
+        "summary": "셀레니움으로 네이버 계정 로그인과 블로그 자동 포스팅을 구현한 Python 예제. 이 분야에서 비교적 오래 유지된 레퍼런스 저장소.",
+        "relevance": "네이버 로그인 자동화(캡차·기기등록 우회 이슈 포함)와 에디터 iframe 접근의 기본 패턴을 확인하는 출발점.",
+        "signals": "스타 14, 2022 생성, 2026-02 업데이트",
+        "func": "publish",
+        "region": "KR",
+        "verdict": {
+          "exists": true,
+          "active": false,
+          "keep": true,
+          "note": "저장소 실재(공개, Python, 스타 14, 포크 2). 설명도 요약과 일치(\"셀레니움을 이용한 네이버 계정 로그인 / 블로그 자동 포스팅 기능 예제\"). 단 \"2026-02 업데이트\"는 스타 등 메타데이터 갱신(updated_at)일 뿐이고 마지막 push는 2022-08-14 — 약 4년간 코드 미유지이므로 \"오래 유지된 레퍼런스\"라는 서술은 교정 필요. 로그인 우회·에디터 iframe 접근의 기본 패턴 출발점으로는 남길 만하나, 2022년 셀렉터는 현재 네이버 UI와 다를 수 있음을 전제로 참고할 것."
+        }
+      },
+      {
+        "name": "AryanVBW/AUTO-blogger",
+        "url": "https://github.com/AryanVBW/AUTO-blogger",
+        "platform": "github",
+        "kind": "code",
+        "summary": "AI 콘텐츠 생성부터 WordPress 자동 발행까지 담은 파이썬 자동 블로깅 도구. 이미지 삽입, SEO 최적화, 멀티 도메인 관리까지 엔드투엔드 구현.",
+        "relevance": "우리 루프의 '글 생성→자동 발행' 전체 파이프라인 구조(생성-이미지-SEO-발행 단계 분리)를 참고할 수 있는 가장 완성형 오픈소스 레퍼런스.",
+        "signals": "스타 19, 최근 푸시 2026-03",
+        "func": "publish",
+        "region": "US",
+        "verdict": {
+          "exists": true,
+          "active": true,
+          "keep": true,
+          "note": "GitHub API로 실물 확인 — Python, 스타 19·포크 16, 최종 푸시 2026-03-23(5개월 전)으로 1년 내 활동 충족. 저장소 설명이 요약(AI 생성→이미지(Getty/DALL-E)→SEO→WordPress 발행, 멀티 도메인)과 일치하나 스타 19로 커뮤니티 검증은 약한 편 — '가장 완성형'이라기보다 구조 참고용 소규모 개인 프로젝트로 보는 게 정확."
+        }
+      },
+      {
+        "name": "shahednasser/cross-post",
+        "url": "https://github.com/shahednasser/cross-post",
+        "platform": "github",
+        "kind": "code",
+        "summary": "마크다운 글 하나를 Dev.to·Hashnode·Medium에 동시 발행하는 CLI. 플랫폼별 API 어댑터와 canonical URL 처리를 갖춤.",
+        "relevance": "네이버 본류 + 유사 플랫폼 확장 시 '플랫폼별 발행 어댑터 인터페이스' 설계의 직접적 본보기.",
+        "signals": "스타 131 (2023 이후 유지보수 중단이라 설계 참고용)",
+        "func": "publish",
+        "region": "US",
+        "verdict": {
+          "exists": true,
+          "active": false,
+          "keep": true,
+          "note": "GitHub API로 확인: 실재하는 JavaScript CLI(npm cross-post-blog), 스타 131, MIT, 요약(Dev.to·Hashnode·Medium 크로스 발행)과 일치. 다만 마지막 커밋이 2023-09-21로 3년째 유지보수 중단 — 발견물 signals에 이미 명시된 대로 '설계 참고용'으로만 유지 권장."
+        }
+      },
+      {
+        "name": "GitHub topic: blog-automation",
+        "url": "https://github.com/topics/blog-automation?o=desc&s=updated",
+        "platform": "github",
+        "kind": "code",
+        "summary": "블로그 자동화 오픈소스 저장소를 모아 보는 GitHub 토픽 허브. 최신 업데이트순 정렬로 살아있는 프로젝트를 계속 발굴 가능.",
+        "relevance": "자동 발행 구현체를 추가로 캐낼 때 쓰는 상시 탐색 입구 — 티스토리·네이버 대상 도구도 이 토픽에 종종 등록됨.",
+        "signals": "토픽 허브 (다수 저장소 집계)",
+        "func": "publish",
+        "region": "US",
+        "verdict": {
+          "exists": true,
+          "active": true,
+          "keep": true,
+          "note": "HTTP 200 접근 확인. 33개 저장소 집계 토픽 허브로, 업데이트순 상단이 2026-08-16·08-14 등 당일까지 갱신 중이며 네이버 자동화 앱·티스토리 포스터 스킬 등 한국 플랫폼 도구도 실제 등록돼 요약과 일치. 개별 저장소는 스타 0~32로 소규모지만, 자동 발행 구현체를 계속 캐내는 탐색 입구로서의 가치는 유효."
+        }
+      },
+      {
+        "name": "blog-auto-publishing-tools (ddean2009)",
+        "url": "https://github.com/ddean2009/blog-auto-publishing-tools",
+        "platform": "github",
+        "kind": "code",
+        "summary": "Python 기반 블로그 원클릭 다중 플랫폼 발행 도구. CSDN·掘金·知乎·头条·공중호 등에 브라우저 자동화로 발행하며 GPT 재작성도 지원.",
+        "relevance": "네이버 블로그 자동 발행기의 구조(플랫폼별 어댑터 + 브라우저 자동화 + LLM 재작성)와 가장 유사한 Python 구현체로 직접 참고 가능.",
+        "signals": "스타 284, 2026-08 최근 업데이트",
+        "func": "publish",
+        "region": "CN",
+        "verdict": {
+          "exists": true,
+          "active": false,
+          "keep": true,
+          "note": "실재하며 스타 284는 일치하나 최종 커밋은 2024-10-08로 \"2026-08 최근 업데이트\" 신호는 오류 — 약 2년 비활성. 플랫폼별 어댑터(publisher/) + Selenium 브라우저 자동화 구조는 요약대로라 참고 가치는 있지만, GPT 재작성은 README에 \"후속 기능\"으로만 나열되어 실구현 여부 불확실 — 구조 참고용으로만 남길 것."
+        }
+      },
+      {
+        "name": "AIMedia (Anning01)",
+        "url": "https://github.com/Anning01/AIMedia",
+        "platform": "github",
+        "kind": "code",
+        "summary": "핫이슈 자동 수집 → AI 글 작성 → 자동 발행까지 통합한 Python 소프트웨어. 头条·小红书·공중호 등 지원.",
+        "relevance": "우리 루프(주제 발굴→글 생성→자동 발행) 전체를 이미 구현한 중국 사례로, 파이프라인 단계 분리 방식을 참고.",
+        "signals": "스타 2,418, 2026-08-15 업데이트",
+        "func": "publish",
+        "region": "CN",
+        "verdict": {
+          "exists": true,
+          "active": true,
+          "keep": true,
+          "note": "실재 확인 — 스타 2,418, 최종 push 2026-07-15, Apache-2.0, 커밋 69개. 요약대로 핫이슈 수집→AI 작성→자동 발행(头条·공중호·百家号 등, Django 백엔드+PySide6 클라이언트) 통합 소프트웨어이나, README상 본 저장소는 유지보수(안정화) 모드이고 신기능은 후속작 MediaFlow/AiMaster(FastAPI+브라우저 플러그인)로 이전됨 — 참고 시 후속작도 함께 볼 것. 발행 대상에 小红书는 명시 목록에 없음(설명문에만 언급)."
+        }
+      },
+      {
+        "name": "playwright-automation (iamtornado)",
+        "url": "https://github.com/iamtornado/playwright-automation",
+        "platform": "github",
+        "kind": "code",
+        "summary": "AI+Playwright 기반 소셜미디어 자동 발행 시스템. 딩톡 문서/로컬 마크다운을 여러 플랫폼(知乎·CSDN 등)에 발행, AI가 요약·태그 생성.",
+        "relevance": "우리와 동일하게 Playwright를 발행 엔진으로 쓰는 모듈화 설계 사례라 셀렉터 관리·플랫폼 모듈 구조를 직접 참고.",
+        "signals": "검색 상위 노출, 모듈화 설계 명시",
+        "func": "publish",
+        "region": "CN",
+        "verdict": {
+          "exists": true,
+          "active": true,
+          "keep": true,
+          "note": "GitHub API로 실재 확인 — Python, 스타 15·포크 3, 생성 2025-08-27, 최종 push 2025-10-27(1년 이내)로 요약(AI+Playwright 다중 플랫폼 발행, 모듈화 설계)이 저장소 설명과 정확히 일치. 다만 스타 15개·개인 프로젝트·최근 10개월 커밋 없음이라 규모 신호는 약함 — 셀렉터/플랫폼 모듈 구조 참고용 코드 사례로만 유지 권장."
+        }
+      },
+      {
+        "name": "AIWriteX (iniwap)",
+        "url": "https://github.com/iniwap/AIWriteX",
+        "platform": "github",
+        "kind": "code",
+        "summary": "공중호용 전자동 AI 도구: 핫검색 수집→트렌드 분석→글 생성→배치 편집→발행까지. '去AI味'(AI 티 제거)와 AI 탐지(朱雀) 회피 기능 포함.",
+        "relevance": "AI 검색(AI 브리핑)에 인용될 글 품질 관리 관점에서 'AI 티 제거·탐지 회피' 모듈과 발행 자동화 결합 방식을 참고.",
+        "signals": "검색 상위, 다중 플랫폼(小红书/百家号/头条) 지원",
+        "func": "publish",
+        "region": "CN",
+        "verdict": {
+          "exists": true,
+          "active": true,
+          "keep": true,
+          "note": "GitHub API로 확인 — 스타 1,835개, 포크 379개, 최종 push 2026-08-14(이틀 전)로 활발히 유지보수 중. 저장소 설명이 요약과 일치(微信公众号 전자동: 핫검색 수집→트렌드 분석→생성→발행, '去AI味·过朱雀检测', 小红书/百家号/头条 다중 플랫폼), Python/Apache-2.0, 2025-04 생성."
+        }
+      },
+      {
+        "name": "NoteClient2",
+        "url": "https://github.com/Mr-SuperInsane/NoteClient2",
+        "platform": "github",
+        "kind": "code",
+        "summary": "note.com에 Python으로 글을 투고하는 비공식 라이브러리. Markdown, 이미지, 아이캐치, 유료 영역 설정까지 지원한다.",
+        "relevance": "네이버 블로그 자동 발행 모듈 설계 시, 비공식 API/브라우저 세션 기반 투고 라이브러리의 구조(인증 세션 유지, 초안→발행 흐름) 레퍼런스.",
+        "signals": "note 자동 투고 검색에서 반복 인용되는 사실상 표준 비공식 라이브러리",
+        "func": "publish",
+        "region": "JP",
+        "verdict": {
+          "exists": true,
+          "active": true,
+          "keep": true,
+          "note": "실재 확인 — README가 요약과 일치(Markdown·이미지·아이캐치·유료 영역 투고, 로그인만 Playwright + 나머지는 note 내부 API + 쿠키 세션 재사용 구조라 인증 세션 유지·초안→발행 레퍼런스로 적합). 다만 2026-01-02 생성·2026-01-10 최종 푸시, 스타 0·포크 1의 신생 후속작이라 \"사실상 표준\" 신호는 과장 — 반복 인용되는 것은 2023년 전작 NoteClient일 가능성이 높음."
+        }
+      },
+      {
+        "name": "naver-search-mcp (isnow890)",
+        "url": "https://github.com/isnow890/naver-search-mcp",
+        "platform": "github",
+        "kind": "code",
+        "summary": "네이버 검색 API(웹·뉴스·블로그·쇼핑 등)와 데이터랩 API를 묶은 MCP 서버. 검색어 트렌드 분석 도구까지 제공한다.",
+        "relevance": "주제 발굴 단계에서 네이버 검색 결과·데이터랩 트렌드를 파이프라인이나 에이전트에서 바로 호출하는 구현 레퍼런스.",
+        "signals": "MCP 형태로 최근 활발히 유지되는 네이버 API 래퍼 (site:github.com 검색 최상단 노출)",
+        "func": "topic",
+        "region": "KR",
+        "verdict": {
+          "exists": true,
+          "active": true,
+          "keep": true,
+          "note": "실재 확인 — 스타 81·포크 26, MIT, TypeScript. 최근 커밋 2026-07-26(KST 타임존 버그 수정, v1.0.50)로 3주 전까지 활발히 유지. 레포 설명이 요약과 정확히 일치(네이버 검색 웹·뉴스·블로그·쇼핑 + 데이터랩 트렌드 분석 MCP)하며, 카카오 PlayMCP(playmcp.kakao.com/mcp/154)에도 등재되어 있다."
+        }
+      },
+      {
+        "name": "python_nevada — 네이버 검색광고 API 파이썬 라이브러리",
+        "url": "https://github.com/taegyumin/python_nevada",
+        "platform": "github",
+        "kind": "code",
+        "summary": "네이버 검색광고(searchad) API를 파이썬에서 쉽게 쓰게 해주는 래퍼. 키워드 도구로 월간 검색량·연관 키워드를 조회할 수 있다.",
+        "relevance": "키워드별 검색량·경쟁도 수치를 SQLite에 쌓는 키워드 리서치 모듈의 직접적인 코드 참고.",
+        "func": "topic",
+        "region": "KR",
+        "verdict": {
+          "exists": true,
+          "active": false,
+          "keep": true,
+          "note": "실재 확인 — 네이버 검색광고 API 파이썬 래퍼(nevada, MIT, 211커밋)로 요약과 일치하고 키워드 도구 문서도 있음. 다만 마지막 push 2020-08-16(약 6년 전), 스타 14·포크 4로 사실상 방치 상태 — 인증 서명·키워드 도구 호출 패턴 참고용으로만 쓰고 현행 API 스펙과의 차이는 별도 검증 필요."
+        }
+      },
+      {
+        "name": "naver-openapi-guide — DataLab 검색어 트렌드 파이썬 공식 샘플",
+        "url": "https://github.com/naver/naver-openapi-guide/blob/master/sample/python/APIExamDatalabTrend.py",
+        "platform": "github",
+        "kind": "code",
+        "summary": "네이버 공식 오픈API 가이드 저장소의 데이터랩 검색어 트렌드 API 파이썬 예제. 기간·기기·연령·성별 필터로 키워드 그룹 트렌드를 조회한다.",
+        "relevance": "발굴한 키워드의 계절성·상승 추세를 판별하는 트렌드 탐지 모듈 구현의 공식 출발점.",
+        "signals": "naver 공식 organization 저장소",
+        "func": "topic",
+        "region": "KR",
+        "verdict": {
+          "exists": true,
+          "active": true,
+          "keep": true,
+          "note": "파일 실물 확인 — naver 공식 org 저장소의 데이터랩 검색어 트렌드(/v1/datalab/search) 파이썬 예제로, keywordGroups·timeUnit·device·ages·gender 필터가 요약과 정확히 일치. 저장소는 스타 155·최종 커밋 2026-08-07로 활성 유지 중. 단, 예제는 urllib 기반 최소 호출 샘플(약 20줄)이라 API 호출 형식 참고용이지 트렌드 분석 로직은 없음."
+        }
+      },
+      {
+        "name": "seo-keyword-research-tool (chukhraiartur)",
+        "url": "https://github.com/chukhraiartur/seo-keyword-research-tool",
+        "platform": "github",
+        "kind": "code",
+        "summary": "Python CLI로 Google Autocomplete·People Also Ask·Related Searches에서 키워드 제안을 긁어오는 오픈소스 도구 (SerpApi 기반).",
+        "relevance": "자동완성+PAA+연관검색 3원천을 합쳐 키워드 후보를 뽑는 구조를 네이버 자동완성·연관검색어·지식iN 마이닝으로 그대로 치환 가능.",
+        "signals": "스타 160, 2026-07 업데이트, Python",
+        "func": "topic",
+        "region": "US",
+        "verdict": {
+          "exists": true,
+          "active": false,
+          "keep": true,
+          "note": "실재 확인(스타 160, MIT, Python). 요약대로 Google Autocomplete·PAA·Related Searches 3원천 키워드 수집 CLI가 맞으나, 마지막 커밋(pushed_at)은 2023-05-10로 사실상 방치 상태 — '2026-07 업데이트' 신호는 updated_at 메타데이터 오독. SerpApi(유료 API) 얇은 래퍼라 코드 재사용보다 3원천 병합 구조 참고용으로만 가치 있음."
+        }
+      },
+      {
+        "name": "trendspyg",
+        "url": "https://github.com/flack0x/trendspyg",
+        "platform": "github",
+        "kind": "code",
+        "summary": "pytrends 대체용 최신 Python 라이브러리+CLI — Google Trends의 trending now, 키워드 시계열 관심도, 관련 쿼리, 지역별 관심도를 제공하며 MCP 서버도 포함.",
+        "relevance": "트렌드 급상승 키워드 탐지 파이프라인(수집→시계열→급등 판정)의 구현 레퍼런스이자, 글로벌 트렌드를 네이버 데이터랩과 교차 검증하는 보조 데이터원.",
+        "signals": "스타 39, 2026-08-15 업데이트(활발), pytrends-alternative 태그",
+        "func": "topic",
+        "region": "US",
+        "verdict": {
+          "exists": true,
+          "active": true,
+          "keep": true,
+          "note": "GitHub API 확인 — 실재하며 설명·토픽(pytrends-alternative, mcp-server, interest-over-time 등)이 요약과 정확히 일치. 스타 39, 마지막 push 2026-08-15(어제), MIT 라이선스, PyPI 배포(2025-11 생성, open issues 0)로 활발히 유지되는 pytrends 대체 라이브러리라 트렌드 수집 파이프라인 레퍼런스로 유효."
+        }
+      },
+      {
+        "name": "python-for-seo (HasData)",
+        "url": "https://github.com/HasData/python-for-seo",
+        "platform": "github",
+        "kind": "code",
+        "summary": "키워드 리서치·SERP 분석·콘텐츠 갭 분석용 Python 도구 7종 모음 — PAA 박스에서 계층형 질문 트리를 만드는 기능 포함.",
+        "relevance": "질문 마이닝(PAA 트리)과 콘텐츠 갭 분석을 코드로 구현한 예시라 우리 '주제 발굴' 모듈의 기능 분해 참고에 적합.",
+        "signals": "2025-2026 활동, Python, API 기반이지만 구조 참고 가치",
+        "func": "topic",
+        "region": "US",
+        "verdict": {
+          "exists": true,
+          "active": false,
+          "keep": true,
+          "note": "실재 확인 — README에 PAA Tree Builder(재귀 질문 트리)·Content Gap Analyzer 등 7종 도구가 요약대로 존재. 다만 2026-01-06 커밋 1개가 전부인 HasData API 홍보용 코드 드롭(스타 2, 포크 3)이라 유지보수 활성은 아님 — '주제 발굴' 모듈의 기능 분해 참고용으로는 가치 있음(실행 시 HasData 유료 API 키 필요)."
+        }
+      },
+      {
+        "name": "TrendRadar (sansan0)",
+        "url": "https://github.com/sansan0/TrendRadar",
+        "platform": "github",
+        "kind": "code",
+        "summary": "미보·즈후·바이두·더우인 등 다수 중국 플랫폼 핫이슈를 집계하는 AI 여론·트렌드 모니터. 키워드 필터링, AI 요약 브리핑, RSS, MCP 연동, 위챗/텔레그램 푸시를 지원한다.",
+        "relevance": "주제 발굴 단계에서 '멀티 플랫폼 핫리스트 수집 → 키워드 필터 → 텔레그램 브리핑' 구조를 그대로 참고할 수 있는 가장 근접한 오픈소스.",
+        "signals": "GitHub 인기 리포(다수 포크 존재), Docker·MCP 지원 등 활발히 업데이트 중",
+        "func": "topic",
+        "region": "CN",
+        "verdict": {
+          "exists": true,
+          "active": true,
+          "keep": true,
+          "note": "GitHub API 확인 — 스타 61,487, 포크 24,868, 최종 push 2026-07-17(1개월 내), Python/GPL-3.0. 리포 설명이 요약과 일치(다중 플랫폼 핫이슈 집계 + 키워드 필터 + AI 브리핑 + RSS/MCP + 위챗·텔레그램 등 푸시). 유일한 보충: 라이선스가 GPL-3.0이므로 코드 직접 차용 시 카피레프트 유의(구조 참고는 무관)."
+        }
+      },
+      {
+        "name": "DailyHotApi (imsyy)",
+        "url": "https://github.com/imsyy/DailyHotApi",
+        "platform": "github",
+        "kind": "code",
+        "summary": "'오늘의 핫랭킹(今日热榜)' 스타일의 핫이슈 집계 API. 웨이보·즈후·더우인 등 수십 개 플랫폼 인기 순위를 단일 API/RSS로 제공하며 Vercel 배포를 지원한다.",
+        "relevance": "트렌드 탐지 모듈에서 여러 소스를 하나의 API 레이어로 정규화하는 설계(엔드포인트 구조·캐싱)를 참고.",
+        "signals": "중국어권에서 널리 포크·재배포되는 대표 핫리스트 API 프로젝트",
+        "func": "topic",
+        "region": "CN",
+        "verdict": {
+          "exists": true,
+          "active": true,
+          "keep": true,
+          "note": "GitHub API 확인: imsyy/DailyHotApi 실재, TypeScript, 스타 4,004·포크 1,331, 최종 push 2026-03-11(5개월 전, 1년 이내), archived 아님. 설명(\"今日热榜 API, 핫데이터 집계, RSS 모드·Vercel 배포 지원\")이 발견물 요약과 정확히 일치 — 멀티소스 핫리스트 정규화 API 레퍼런스로 참고 가치 있음."
+        }
+      },
+      {
+        "name": "hunter-ai-content-factory (Pangu-Immortal)",
+        "url": "https://github.com/Pangu-Immortal/hunter-ai-content-factory",
+        "platform": "github",
+        "kind": "code",
+        "summary": "'좋은 글의 80%는 선题'을 표방하는 24시간 자동 정보 수집 시스템. GitHub Trending·Twitter·HackerNews·Reddit에서 핫이슈를 모아 AI가 '쓸 가치가 있는지' 판정한 뒤 자동 작성·발행한다.",
+        "relevance": "주제 후보를 LLM으로 '작성 가치 판정(점수화)'하는 단계 설계를 참고 — 우리 전략 보정 루프의 선题 스코어링에 직결.",
+        "signals": "2025~26년 활동 중인 중국어 리포",
+        "func": "topic",
+        "region": "CN",
+        "verdict": {
+          "exists": true,
+          "active": true,
+          "keep": true,
+          "note": "실재 확인 — 스타 386·포크 87, 최근 커밋 2026-02-11로 1년 내 활동. 요약과 일치: GitHub Trending·Twitter·Reddit·HackerNews(+샤오홍슈)에서 수집 후 AI(Gemini 2.0 Flash)가 '작성 가치' 판정하는 선题 중심 자동 콘텐츠 시스템 — ChromaDB 중복검사 포함, 선题 스코어링 참고 가치 있음."
+        }
+      },
+      {
+        "name": "spider-BaiduIndex (longxiaofei)",
+        "url": "https://github.com/longxiaofei/spider-BaiduIndex",
+        "platform": "github",
+        "kind": "code",
+        "summary": "바이두지수(百度指数, 중국판 구글 트렌드/네이버 데이터랩) 검색량 데이터를 가져오는 Python SDK. 쿠키 기반 인증과 암호화된 응답 복호화를 처리한다.",
+        "relevance": "검색량 분석 기능에서 로그인 필수·난독화된 트렌드 지표 사이트를 SDK화하는 패턴(네이버 데이터랩·검색광고 API 대응)을 참고.",
+        "signals": "바이두지수 크롤러 중 SDK 형태로 정리된 대표 리포",
+        "func": "topic",
+        "region": "CN",
+        "verdict": {
+          "exists": true,
+          "active": true,
+          "keep": true,
+          "note": "GitHub API 확인 — 실존 리포, 설명 \"data sdk for baidu Index\"(Python, MIT)로 요약과 일치. 스타 800·포크 227, 최종 push 2025-11-24(1년 이내), archived 아님 — 쿠키 인증 기반 바이두지수 SDK 대표 리포로 참고 가치 유지."
+        }
+      },
+      {
+        "name": "sundios/Keyword-generator-SEO",
+        "url": "https://github.com/sundios/Keyword-generator-SEO",
+        "platform": "github",
+        "kind": "code",
+        "summary": "Google 서제스트(자동완성) 쿼리에 접두사·접미사를 붙여 대량의 키워드 아이디어를 생성하는 키워드 리서치 Python 스크립트.",
+        "relevance": "네이버 자동완성·연관검색어에 같은 접두/접미사 확장 기법을 적용하는 키워드 마이닝 모듈의 구현 참고.",
+        "signals": "GitHub 공개 저장소, 서제스트 기반 키워드 리서치 스크립트로 검색 상위 노출",
+        "func": "topic",
+        "region": "JP",
+        "verdict": {
+          "exists": true,
+          "active": false,
+          "keep": true,
+          "note": "저장소 실재·공개 접근 가능(스타 67, 포크 20). 요약대로 Google 서제스트에 접두/접미사를 붙여 키워드를 확장해 CSV로 내보내는 단일 Python 스크립트(suggestqueries.py, 커밋 14개)임. 다만 최종 커밋이 2023-06-27로 2년 이상 방치 상태라 active는 아님 — 유지보수 의존이 아닌 접두/접미사 확장 기법의 구현 패턴 참고 용도로는 여전히 유효해 keep."
+        }
+      },
+      {
+        "name": "choigpt-ai/naver-blog-automation",
+        "url": "https://github.com/choigpt-ai/naver-blog-automation",
+        "platform": "github",
+        "kind": "code",
+        "summary": "스레드/메모/스크린샷 같은 소재를 AI가 네이버 SEO 블로그 글로 확장하고 로컬 크롬으로 임시저장까지 하는 Python 자동화. 골든키워드 발굴·썸네일 자동 생성 포함.",
+        "relevance": "소재→SEO 글 확장→발행 대기까지의 전체 흐름과 키워드 발굴 로직이 우리 주제 발굴·글 생성 단계의 직접 참고가 된다.",
+        "signals": "스타 7, 2026-07 업데이트, 2026-07 생성된 최신 저장소",
+        "func": "writing",
+        "region": "KR",
+        "verdict": {
+          "exists": true,
+          "active": true,
+          "keep": true,
+          "note": "실재하며 요약과 실물이 정확히 일치 — 스레드→골든키워드(검색량÷문서수)→SEO 글 확장→썸네일→로컬 크롬 임시저장 파이프라인이 core/·automation/ 구조로 실제 구현돼 있고 항상 '임시저장'까지만 수행. 스타 7·포크 4·커밋 2개의 2026-07 신생 저장소라 트래픽 신호는 약하지만 최신이며, 주제 발굴·글 생성 단계 참고 가치가 있어 keep."
+        }
+      },
+      {
+        "name": "cd000242-sudo/naver (AI 네이버 블로그 자동화 데스크톱 앱)",
+        "url": "https://github.com/cd000242-sudo/naver",
+        "platform": "github",
+        "kind": "code",
+        "summary": "콘텐츠 생성→품질 검증→이미지 배치→예약·자동 발행까지 담은 TypeScript/Electron + Playwright·Puppeteer 기반 네이버 블로그 자동화 앱.",
+        "relevance": "품질 검증(게이트)과 예약 발행을 한 파이프라인에 넣은 구조가 우리 검수 게이트+자동 발행 설계의 참고 사례.",
+        "signals": "2026-08-16 업데이트(활발), 스타 2, topics: naver-blog·playwright·openai",
+        "func": "writing",
+        "region": "KR",
+        "verdict": {
+          "exists": true,
+          "active": true,
+          "keep": true,
+          "note": "README 실물 확인 — TypeScript/Electron + Puppeteer·Playwright 네이버 블로그 자동화 앱이 맞고, InputValidator→…→QualityGate→PublishGuard→ExposureMonitor로 이어지는 품질 게이트+예약 발행 파이프라인이 문서화되어 있어 요약과 일치(검수 게이트+자동 발행 참고 가치 있음). 최종 커밋 2026-08-16이나 최근 커밋은 전부 github-actions 봇의 \"공개 스냅샷 갱신\"이며 스타 2로 채택도는 매우 낮음, 라이선스는 AGPL-3.0(코드 차용 시 주의) — 구조 참고용으로만 keep."
+        }
+      },
+      {
+        "name": "STORM (stanford-oval/storm)",
+        "url": "https://github.com/stanford-oval/storm",
+        "platform": "github",
+        "kind": "code",
+        "summary": "스탠퍼드의 LLM 지식 큐레이션 시스템. 인터넷 검색 기반 리서치 → 다관점 질문 생성 → 계층적 아웃라인 → 인용 포함 전체 아티클 생성 파이프라인을 오픈소스로 구현.",
+        "relevance": "우리 '주제 발굴→리서치→초안' 단계의 파이프라인 구조(지식 수집 모듈·아웃라인 모듈 분리, 출처 인용 강제)를 그대로 참고할 수 있는 가장 정석적인 레퍼런스.",
+        "signals": "GitHub 스타 1만+ 급 인기 저장소, NAACL 2024 논문 기반, OpenAI/Anthropic 등 임의 LLM 교체 가능",
+        "func": "writing",
+        "region": "US",
+        "verdict": {
+          "exists": true,
+          "active": true,
+          "keep": true,
+          "note": "GitHub API로 실재 확인 — 스타 31,013개(요약의 \"1만+\"보다 큼, 실제 3.1만), MIT 라이선스, 최종 push 2025-09-30로 최근 1년 이내 유지보수 중. 저장소 설명(\"LLM-powered knowledge curation system... full-length report with citations\")과 NAACL/deep-research 토픽이 발견물 요약(리서치→아웃라인→인용 포함 아티클 파이프라인)과 정확히 일치해 참고 가치 충분."
+        }
+      }
+    ],
+    "rejected": [
+      {
+        "name": "movemin03/NaverBlog_Auto",
+        "url": "https://github.com/movemin03/NaverBlog_Auto",
+        "note": "실재 확인(스타 4, 커밋 30개)이나 마지막 push는 2025-05-26로 1년 초과 — 발견물의 '2026-07-02 업데이트'는 커밋이 아닌 메타데이터 updated_at. 핵심 포스팅 스크립트는 README가 자체로 outdated(ChromeDriver 113, 코드 수정 필요) 선언한 단일 파일 Selenium 스크립트 2개 구성이라, '다건 발행 큐/배치 구조' 참고 가치가 없다."
+      },
+      {
+        "name": "kwanwon/naver-blog-automation",
+        "url": "https://github.com/kwanwon/naver-blog-automation",
+        "note": "실재·공개 저장소이고 최근 푸시 2026-08-13(스타 1, 포크 1, 커밋 34, 기본 브랜치 windows-ci-setup)로 활성은 맞다. 그러나 루트에 __pycache__·chrome_profile 10여 개·backups·\"C:/Users/사용자이름/Desktop/…\" 절대경로 디렉터리까지 커밋된 개인 작업 덤프 수준이라, \"모듈 경계 나누는 방식 참고\"라는 채택 사유가 성립하지 않음 — 아키텍처 레퍼런스 가치 없음."
+      },
+      {
+        "name": "Neeraj-Sihag/WordPress-Post-Automation",
+        "url": "https://github.com/Neeraj-Sihag/WordPress-Post-Automation",
+        "note": "저장소 실재(스타 1, MIT, Python). 단 2024-11-17 하루 만에 생성·마지막 푸시된 뒤 방치된 개인 토이 프로젝트로 비활성. 요약이 핵심을 누락 — WordPress REST API가 아니라 Selenium으로 Classic Editor UI를 브라우저 조작해 발행하는 방식이어서, 자동 발행 파이프라인의 배치·재시도·로깅 설계 참고 가치가 낮음(표준인 REST API 기반 사례를 찾는 편이 나음)."
+      },
+      {
+        "name": "noteに毎日自動投稿するシステムの全コードを公開する (Qiita)",
+        "url": "https://qiita.com/mistudio0902/items/f9e092ebe52e2b83c2e8",
+        "note": "기사 URL과 저자 계정(mistudio0902) 모두 Qiita 웹·공식 API에서 404 — 계정 삭제로 기사가 사라졌다. 검색 캐시상 2026-04-11 게재된 실존 글이었으나(YAML+Claude API+note API 일일 자동투고) 현재 접근 불가라 레퍼런스로 남길 수 없다."
+      },
+      {
+        "name": "dig_baiduzhidao_keywords (qq841483350)",
+        "url": "https://github.com/qq841483350/dig_baiduzhidao_keywords",
+        "note": "실재하며 요약(바이두즈다오 롱테일 키워드 채굴→키워드명 txt 저장)은 실물과 일치하나, 실체는 2018-06-09 커밋 1회 후 방치된 Python 2 단일 스크립트(2.8KB, 스타 5·포크 2)로 검색 결과 페이지를 정규식으로 긁어 제목만 필터링하는 자명한 수준. 지식iN 질문 마이닝에 이식할 만한 기법적 원형이 없어(페이지네이션+제목 스크랩이 전부, 셀렉터도 사장됨) 레퍼런스로 남길 가치가 낮음."
+      },
+      {
+        "name": "pytrends — Google Trends 비공식 API",
+        "url": "https://github.com/GeneralMills/pytrends",
+        "note": "저장소는 실재하며(스타 3,730, 포크 888) 요약대로 Google Trends 비공식 API가 맞으나, 마지막 커밋이 2024-08-10이고 저장소가 archived(읽기 전용) 상태로 유지보수가 완전히 중단됐다. 열린 이슈 152건에 Google 스펙 변경 대응이 안 되는 비공식 API라 \"geo=KR로 그대로 쓸 수 있는 기반\"이라는 relevance는 성립하지 않음 — 기반 라이브러리로는 부적합하고 유지보수 중인 대체재(trendspy 등)를 별도 탐색해야 한다."
+      }
+    ],
+    "unverified": [
+      {
+        "name": "GPT Researcher (assafelovic/gpt-researcher)",
+        "url": "https://github.com/assafelovic/gpt-researcher",
+        "platform": "github",
+        "kind": "code",
+        "summary": "planner/execution 에이전트 구조로 웹 리서치를 병렬 수행해 인용 포함 5~6페이지 보고서를 생성하는 자율 리서치 에이전트. LangGraph 멀티에이전트 버전과 재귀적 Deep Research 워크플로 포함.",
+        "relevance": "글 생성 전 리서치 단계를 Python 라이브러리(pip)로 바로 파이프라인에 끼워 넣을 수 있는 실전 후보 — 인용 출처 확보는 AI 브리핑 인용 신뢰도에도 직결.",
+        "signals": "GitHub 스타 2만+ 급, PyPI 배포, 활발한 릴리스",
+        "func": "writing",
+        "region": "US"
+      },
+      {
+        "name": "claude-blog (AgriciDaniel/claude-blog)",
+        "url": "https://github.com/AgriciDaniel/claude-blog",
+        "platform": "github",
+        "kind": "code",
+        "summary": "Claude Code용 블로그 스킬 스위트 — 30개 서브스킬, 5개 에이전트, '5-gate Blog Delivery Contract'로 리서치(출처 통계)→아웃라인 승인→초안→다중 패스 품질 채점→팩트 검증→블로킹 리뷰(최대 3회 반복)를 강제.",
+        "relevance": "구글 랭킹과 'AI 인용' 이중 최적화를 명시한 드문 사례 — 우리 품질 게이트(통과 못 하면 발행 차단) 설계의 직접 참고 자료.",
+        "signals": "MIT 라이선스, v1.9.0까지 활발히 릴리스 중, AI Marketing Hub 커뮤니티에서 개발",
+        "func": "writing",
+        "region": "US"
+      },
+      {
+        "name": "BlogPilot — Open Source AI SEO Content Studio",
+        "url": "https://github.com/IamRamgarhia/BlogPilot-Open-Source-AI-SEO-Content-Studio",
+        "platform": "github",
+        "kind": "code",
+        "summary": "셀프호스팅 오픈소스 AI SEO 콘텐츠 스튜디오. 39개 모듈·45개 방법론(스카이스크래퍼, featured snippet 타기팅, PAA 최적화 등)으로 아웃라인 생성, 메타 태그, 10종 SEO 체크, 내부링크 제안, 이미지 브리프까지 처리.",
+        "relevance": "SEO 글쓰기 자동화의 체크리스트(어떤 검사 항목을 게이트로 둘지)를 모듈 목록에서 훑어 우리 검수 단계 항목 설계에 활용.",
+        "signals": "MIT 라이선스, Surfer/Clearscope 등 상용 도구 대체를 표방",
+        "func": "writing",
+        "region": "US"
+      },
+      {
+        "name": "BlogBoard (KalyanM45/Multi-Agentic-Blog-Generation)",
+        "url": "https://github.com/KalyanM45/Multi-Agentic-Blog-Generation",
+        "platform": "github",
+        "kind": "code",
+        "summary": "LangGraph + Groq LLM으로 기술 블로그 글을 자동 생성·발행까지 하는 엔드투엔드 자동 블로깅 플랫폼. 스케줄링→작성→포맷→발행을 상태 기반 워크플로로 구현.",
+        "relevance": "우리와 동일한 '생성→자동 발행' 풀 루프를 소규모 Python 코드로 구현한 예시라 전체 골격 파악용으로 가볍게 훑기 좋음.",
+        "signals": "LangGraph 상태 워크플로 사용, 개인 프로젝트 규모",
+        "func": "writing",
+        "region": "US"
+      },
+      {
+        "name": "TrendPublish (ai-trend-publish)",
+        "url": "https://github.com/liyown/ai-trend-publish",
+        "platform": "github",
+        "kind": "code",
+        "summary": "전자동 AI 콘텐츠 생성·발행 시스템(Node.js/TypeScript). Twitter/X·웹사이트 등 다중 소스 수집, DeepSeek·Qwen 등 모델로 콘텐츠 분석·랭킹 후 위챗 공중호에 정시 자동 발행, 다중 템플릿 지원.",
+        "relevance": "다중 소스 수집→콘텐츠 랭킹→스케줄 발행 아키텍처가 주제 발굴·자동 발행 스케줄러 설계의 직접 레퍼런스.",
+        "signals": "★3,136, 최근 업데이트 2026-08-15",
+        "func": "writing",
+        "region": "CN"
+      },
+      {
+        "name": "wewrite",
+        "url": "https://github.com/imraywang/wewrite",
+        "platform": "github",
+        "kind": "code",
+        "summary": "공중호 콘텐츠 전 과정을 한 문장 명령으로 돌리는 Skill형 파이프라인(Python). 핫토픽 수집→선제(주제 선정)→프레임 선택→소재 수집→작문→SEO 최적화→품질 검증→위챗 초안함 업로드까지 단계화.",
+        "relevance": "단계별(리서치→초안→SEO→품질 검증) 파이프라인 분해와 초안함 업로드 방식이 우리 글 생성·발행 단계 설계에 참고됨.",
+        "signals": "★3,098, 2026-03 생성 후 급성장, 최근 업데이트 2026-08-16",
+        "func": "writing",
+        "region": "CN"
+      },
+      {
+        "name": "article-writer",
+        "url": "https://github.com/wordflowlab/article-writer",
+        "platform": "github",
+        "kind": "code",
+        "summary": "Claude Code·Cursor·codex·gemini 같은 코딩 에이전트로 공중호 글을 쓰게 하는 spec-kit 방식 도구(TypeScript). 작문 과정을 스펙·명령 체계로 구조화.",
+        "relevance": "코딩 에이전트(Claude Code)를 작문 파이프라인의 실행 엔진으로 쓰는 접근이라, LLM 호출 코드를 직접 짜는 대신 에이전트 하네스로 글을 뽑는 대안 설계를 보여줌.",
+        "signals": "★290, 최근 업데이트 2026-08-13",
+        "func": "writing",
+        "region": "CN"
+      },
+      {
+        "name": "Viral_Writer_Skill",
+        "url": "https://github.com/nashsu/Viral_Writer_Skill",
+        "platform": "github",
+        "kind": "code",
+        "summary": "11개 콘텐츠 인사이트 차원에 기반한 자기미디어(자체 미디어) 작문 Skill. 주제 하나를 주면 완성 글 + 후보 제목 5개 + 이미지 생성 프롬프트를 출력, 범용 에이전트에 장착 가능.",
+        "relevance": "글 생성 프롬프트를 '인사이트 차원 체크리스트'로 구조화한 방식이 우리 초안 생성·제목 A/B 후보 생성 프롬프트 설계에 참고.",
+        "signals": "★727, 최근 업데이트 2026-08-16",
+        "func": "writing",
+        "region": "CN"
+      },
+      {
+        "name": "AI2HU/gego — 오픈소스 GEO 트래커",
+        "url": "https://github.com/AI2HU/gego",
+        "platform": "github",
+        "kind": "code",
+        "summary": "프롬프트를 여러 LLM에 스케줄 실행해 응답 내 웹 인용(citation)을 수집하고 브랜드 언급을 추적하는 오픈소스 GEO 트래커.",
+        "relevance": "우리 '인용수 측정' 단계의 설계(질문 세트 스케줄링 → 인용 파싱 → DB 적재)를 그대로 참고 가능한 코드베이스.",
+        "signals": "GitHub 공개 저장소, generative-engine-optimization 토픽 등재",
+        "func": "geo",
+        "region": "KR"
+      },
+      {
+        "name": "Auriti-Labs/geo-optimizer-skill — AEO/GEO 툴킷",
+        "url": "https://github.com/Auriti-Labs/geo-optimizer-skill",
+        "platform": "github",
+        "kind": "code",
+        "summary": "사이트를 감사(audit)하고 ChatGPT·Perplexity·Gemini·AI Overviews가 인용하는지 추적하는 오픈소스 AEO/GEO 툴킷. CLI·Python·MCP 제공, MIT 라이선스.",
+        "relevance": "Python 프로젝트에 pip/uvx로 바로 붙일 수 있어 글 발행 전 GEO 감사 단계로 통합 검토 가치.",
+        "signals": "MIT, pip install geo-optimizer-skill / uvx 배포",
+        "func": "geo",
+        "region": "KR"
+      },
+      {
+        "name": "deepseek-geo (超算GEO)",
+        "url": "https://github.com/DeepSeekGEO/deepseek-geo",
+        "platform": "github",
+        "kind": "code",
+        "summary": "DeepSeek·Kimi·文心一言·豆包 등 중국 AI 검색엔진에서 브랜드 노출·인용을 실시간 추적하는 AI 검색 모니터링 + GEO 관리 플랫폼. 콘텐츠 생성과 멀티플랫폼 발행까지 포함.",
+        "relevance": "우리 루프의 '인용수·유입 측정' 단계 — AI 엔진별 인용 추적 대시보드 설계를 그대로 참고 가능",
+        "signals": "스타 92, 포크 37, 2026-08-14 업데이트",
+        "func": "geo",
+        "region": "CN"
+      },
+      {
+        "name": "AIGEOTOOLS",
+        "url": "https://github.com/chnjames/AIGEOTOOLS",
+        "platform": "github",
+        "kind": "code",
+        "summary": "브랜드가 ChatGPT·Perplexity 등 AI 답변에서 우선 인용되도록 하는 Python 기반 GEO 콘텐츠 최적화 플랫폼. 키워드 전략, E-E-A-T 최적화, 멀티모델 검증, 데이터 분석 지원 (LangChain/RAG/Streamlit).",
+        "relevance": "글 생성 파이프라인에 넣을 GEO 최적화 체크(E-E-A-T, 멀티모델 검증) 모듈 구조 참고",
+        "signals": "스타 146, 포크 54, 2026-08-15 업데이트",
+        "func": "geo",
+        "region": "CN"
+      },
+      {
+        "name": "GEORank",
+        "url": "https://github.com/yaojingang/GEORank",
+        "platform": "github",
+        "kind": "code",
+        "summary": "오픈소스 GEO 랭킹·생성형 엔진 최적화 플랫폼 (FastAPI + Next.js, 중국 개발자).",
+        "relevance": "인용 랭킹 점수화·측정 백엔드(FastAPI) 아키텍처를 우리 Python 파이프라인에 참고",
+        "signals": "스타 398, 포크 93, 2026-08-15 업데이트",
+        "func": "geo",
+        "region": "CN"
+      },
+      {
+        "name": "Note Client — PythonからnoteへSelenium自動投稿ライブラリ",
+        "url": "https://note.com/naokun_gadget/n/naf129cb5f34b",
+        "platform": "note",
+        "kind": "code",
+        "summary": "공식 API가 없는 note에 Selenium으로 로그인→에디터 조작→발행까지 자동화한 Python 라이브러리(PyPI 공개) 개발기. Claude/ChatGPT로 글을 만들어 집객용 자동 운영 실험에 사용.",
+        "relevance": "네이버 블로그도 공식 발행 API가 없어 Playwright로 에디터를 조작해야 하므로, 브라우저 자동 발행 파이프라인의 구현 패턴(로그인 세션 유지·에디터 입력)이 직접적 참고.",
+        "signals": "PyPI 공개 라이브러리, note 인기 글",
+        "func": "geo",
+        "region": "JP"
+      },
+      {
+        "name": "Qiita — Pythonではてなブログ自動投稿を実装する",
+        "url": "https://qiita.com/virtual_techX/items/5179b73576d86a89868e",
+        "platform": "qiita",
+        "kind": "code",
+        "summary": "はてなブログ AtomPub API를 사용해 Python으로 글을 자동 투고하는 구현 해설(장문 글에서 400 에러가 나는 함정 등 실전 노하우 포함).",
+        "relevance": "공식 API 기반 자동 발행 코드의 구조(인증·초안/공개 전환·에러 처리)를 우리 발행 모듈 설계의 비교 기준으로 활용.",
+        "signals": "Qiita Python 태그",
+        "func": "geo",
+        "region": "JP"
+      },
+      {
+        "name": "applleeee/Blog-Rank",
+        "url": "https://github.com/applleeee/Blog-Rank",
+        "platform": "github",
+        "kind": "code",
+        "summary": "네이버 검색 결과에서 내 블로그 글이 몇 위에 노출되는지 조회하는 네이버 블로그 검색 순위 조회 사이트 소스코드.",
+        "relevance": "발행 글의 키워드별 검색 노출 순위를 자동 추적하는 rank tracking 모듈 구현 방식(검색 결과 파싱·순위 판정 로직) 참고.",
+        "signals": "소규모 개인 프로젝트",
+        "func": "metrics",
+        "region": "KR"
+      },
+      {
+        "name": "krta2/NaverBlogVisitorCntCrawler",
+        "url": "https://github.com/krta2/NaverBlogVisitorCntCrawler",
+        "platform": "github",
+        "kind": "code",
+        "summary": "네이버 블로그의 일 평균 방문자 수를 크롤링해 측정하는 파이썬 도구.",
+        "relevance": "유입(방문자 수) 지표를 로그인 없이 외부에서 수집하는 엔드포인트·파싱 방식 참고 — 측정 루프의 유입 수집기에 직접 대응.",
+        "signals": "소규모 개인 프로젝트",
+        "func": "metrics",
+        "region": "KR"
+      },
+      {
+        "name": "SerpBear",
+        "url": "https://github.com/towfiqi/serpbear",
+        "platform": "github",
+        "kind": "code",
+        "summary": "자가호스팅 검색엔진 순위 추적 앱. Next.js+SQLite 기반으로 키워드 순위를 매일 수집하고 Google Search Console 연동으로 실제 유입·노출수를 키워드별로 보여주며 이메일 알림을 보낸다.",
+        "relevance": "SQLite 기반 순위·유입 자동 수집 스키마와 크론 수집→알림 루프 설계를 우리 측정 파이프라인(네이버 검색 노출·유입 추적)에 그대로 참고 가능.",
+        "signals": "GitHub 스타 다수(수천), 활발한 배포 생태계(Railway/RepoCloud 템플릿), 2026-03 GIGAZINE 소개",
+        "func": "metrics",
+        "region": "US"
+      },
+      {
+        "name": "GetCito",
+        "url": "https://github.com/ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool",
+        "platform": "github",
+        "kind": "code",
+        "summary": "자칭 최초의 오픈소스 AI 검색 최적화(AIO/AEO/GEO) 도구. AI 답변 엔진이 브랜드를 언급·인용하는 빈도를 자체 인프라에서 추적하고 경쟁사와 벤치마크한다.",
+        "relevance": "인용률·언급률을 시계열로 쌓고 경쟁 대비 점수화하는 대시보드 구조가 인용수 측정→전략 보정 루프의 지표 설계에 참고된다.",
+        "signals": "오픈소스 자가호스팅, 데이터 소유권 강조",
+        "func": "metrics",
+        "region": "US"
+      },
+      {
+        "name": "GeoLook (aigclink/geolook)",
+        "url": "https://github.com/aigclink/geolook",
+        "platform": "github",
+        "kind": "code",
+        "summary": "오픈소스 엔드투엔드 GEO(생성형 엔진 최적화) 실행 플랫폼. 현황 진단 → AI 답변 샘플링 → 티켓 → 실행 → 효과 검수까지 파이프라인을 셀프호스팅으로 제공하며, 중국 AI 엔진 매트릭스(GLM/Doubao/DeepSeek/Kimi/Baidu AI)에서 인용 여부를 재현 가능하게 측정한다.",
+        "relevance": "우리 '인용수 측정 → 전략 보정' 루프의 설계 원형 — 질문 샘플링으로 AI 인용을 측정하고 개선 작업(티켓)으로 되돌리는 폐루프 구조를 그대로 참고 가능.",
+        "signals": "스타 500, 포크 120, 2026-07 생성 후 2026-08-15 최근 업데이트, Python",
+        "func": "metrics",
+        "region": "CN"
+      },
+      {
+        "name": "grok-geo (GEO 브랜드 진단 Agent Skill)",
+        "url": "https://github.com/xuboboo/grok-geo",
+        "platform": "github",
+        "kind": "code",
+        "summary": "17개 AI 검색·QA 엔진 어댑터를 내장한 GEO 브랜드 진단 Claude 스킬. 60+ 재현 가능한 결정론적 지표와 92개 규칙으로 가시성·언급·인용·경쟁 격차·감성을 평가하고 실행 가능한 개선 제안을 출력.",
+        "relevance": "측정 결과를 '실행 가능한 다음 글 전략 제안'으로 변환하는 규칙 기반 평가→제안 로직의 직접적 참고 사례.",
+        "signals": "스타 5, Python, Claude Code 스킬 형태, 2026-08 업데이트",
+        "func": "metrics",
+        "region": "CN"
+      },
+      {
+        "name": "wechat-spider (공중호 통계 크롤러)",
+        "url": "https://github.com/striver-ing/wechat-spider",
+        "platform": "github",
+        "kind": "code",
+        "summary": "위챗 공중호의 전체 글·조회수(阅读量)·좋아요·댓글을 매일 자동 수집해 MySQL에 적재하는 오픈소스 크롤러.",
+        "relevance": "폐쇄형 플랫폼(공중호≈네이버 블로그)에서 글별 성과 지표를 정기 자동 수집하는 크롤링·적재 패턴 참고.",
+        "signals": "장기 유지보수 표방, 중국어 공중호 크롤러 중 대표 리포",
+        "func": "metrics",
+        "region": "CN"
+      },
+      {
+        "name": "n8n workflow: Content farming — AI-powered blog automation for WordPress",
+        "url": "https://n8n.io/workflows/5230-content-farming-ai-powered-blog-automation-for-wordpress/",
+        "platform": "web",
+        "kind": "tool",
+        "summary": "뉴스 수집→관련성 필터→AI 작성→이미지 생성→WordPress 발행을 잇는 n8n 공식 워크플로 템플릿.",
+        "relevance": "노드 그래프로 표현된 발행 파이프라인이라 우리 파이썬 파이프라인의 단계 분해(수집·필터·생성·발행)를 검증하는 대조군으로 유용.",
+        "signals": "n8n 공식 템플릿 갤러리 등재",
+        "func": "publish",
+        "region": "US"
+      },
+      {
+        "name": "Wechatsync",
+        "url": "https://github.com/wechatsync/Wechatsync",
+        "platform": "github",
+        "kind": "tool",
+        "summary": "글 하나를 头条·WordPress·知乎·简书·掘金·CSDN 등 여러 플랫폼에 동시 발행하는 브라우저 확장. 각 플랫폼의 비공식 웹 API/DOM을 어댑터로 추상화.",
+        "relevance": "공식 API가 없는 플랫폼(네이버 블로그와 동일 상황)에 로그인 세션 기반 어댑터를 만드는 패턴의 대표 레퍼런스.",
+        "signals": "스타 6,170",
+        "func": "publish",
+        "region": "CN"
+      },
+      {
+        "name": "PostBot (gitcoffee-os)",
+        "url": "https://github.com/gitcoffee-os/postbot",
+        "platform": "github",
+        "kind": "tool",
+        "summary": "오픈소스 다중 플랫폼 콘텐츠 동기 발행 도구. 글·이미지·영상을 위챗/웨이보/头条/小红书/知乎/B站 등 중국 주류 플랫폼과 해외 플랫폼에 원클릭 배포.",
+        "relevance": "발행 대상 플랫폼을 확장 가능한 플러그인 구조로 만든 최신 오픈소스라, 추후 티스토리·미디엄 확장 시 구조 참고.",
+        "signals": "스타 1,249",
+        "func": "publish",
+        "region": "CN"
+      },
+      {
+        "name": "note-mcp (drillan)",
+        "url": "https://github.com/drillan/note-mcp",
+        "platform": "github",
+        "kind": "tool",
+        "summary": "note.com 세션 관리와 인증을 처리해 LLM 에이전트가 note를 조작하게 하는 MCP 서버.",
+        "relevance": "LLM 파이프라인에서 발행 단계를 MCP 도구로 노출하는 아키텍처(세션 관리 분리) 참고 — 네이버 발행기를 MCP화할 때의 본보기.",
+        "signals": "MCP 생태계 초기 프로젝트, note 자동화 검색 상위 노출",
+        "func": "publish",
+        "region": "JP"
+      },
+      {
+        "name": "블랙키위 (BLACKKIWI)",
+        "url": "https://blackkiwi.net/",
+        "platform": "web",
+        "kind": "tool",
+        "summary": "네이버 생태계 대표 키워드 분석 웹 서비스. 검색량·월간 발행 문서 수·연관어·트렌드·상위 노출 블로그 현황을 보여준다.",
+        "relevance": "검색량 대비 문서 수(경쟁도)로 공략 키워드를 고르는 판정 로직의 기준 지표를 벤치마킹할 대상.",
+        "signals": "국내 블로거들이 가장 널리 쓰는 키워드 도구로 다수 가이드 글에서 표준처럼 인용됨",
+        "func": "topic",
+        "region": "KR"
+      },
+      {
+        "name": "AlsoAsked",
+        "url": "https://alsoasked.com/",
+        "platform": "web",
+        "kind": "tool",
+        "summary": "People Also Ask 데이터를 트리 형태로 탐색해 사용자의 실제 질문과 검색 의도를 매핑해주는 대표적 질문 마이닝 SaaS.",
+        "relevance": "질문 기반 주제 발굴 UX·데이터 모델(질문 트리→콘텐츠 기획)의 벤치마크 — AI 검색은 질문형 콘텐츠를 잘 인용하므로 우리 주제 선정 로직의 핵심 참고.",
+        "signals": "PAA 분야 사실상 표준 상용 도구",
+        "func": "topic",
+        "region": "US"
+      },
+      {
+        "name": "ラッコキーワード API (Rakko Keyword API)",
+        "url": "https://rakko.inc/news/kw-api/",
+        "platform": "web",
+        "kind": "tool",
+        "summary": "일본 대표 키워드 리서치 SaaS 'ラッコキーワード'가 2025년경 공개한 API. 서제스트 일괄 수집·검색량·검색순위 모니터링을 프로그램에서 자동 호출할 수 있고 n8n/Zapier 연동 사례도 있다.",
+        "relevance": "키워드 발굴을 SaaS API로 외주화하는 아키텍처(자체 스크레이핑 대신 API 구독)의 벤치마크 — 한국의 키워드 API 대안 검토 시 비교 기준.",
+        "signals": "일본 상용 서비스(월 2,475엔~), 2025~2026년 활발히 업데이트, note 후기·해설 글 다수",
+        "func": "topic",
+        "region": "JP"
+      },
+      {
+        "name": "SEObot (John Rush)",
+        "url": "https://seobotai.com/",
+        "platform": "web",
+        "kind": "tool",
+        "summary": "인디해커 John Rush가 만든 완전 자율 SEO 블로그 SaaS. 키워드 리서치→3천 단어 작성→팩트체크(출처 인용)→내부링크→다중 CMS 자동 발행까지 주간 주기로 무인 운영.",
+        "relevance": "우리 루프(발굴→생성→발행) 전체를 상용화한 벤치마크 — 특히 안티-할루시네이션 팩트체크와 리뷰 옵션(발행 전 검수) 설계가 품질 게이트 참고 대상.",
+        "signals": "누적 20만+ 아티클 생성, 12억 노출·3천만 클릭 주장, $19/월부터, 인디해커 커뮤니티에서 유명",
+        "func": "writing",
+        "region": "US"
+      },
+      {
+        "name": "AIブログくん — 자동 블로그 기사 생성·투고 SaaS",
+        "url": "https://www.ai-blogkun.com/",
+        "platform": "web",
+        "kind": "tool",
+        "summary": "키워드 선정부터 기사 생성·이미지·WordPress 자동 투고·검색엔진 인덱스 송신까지 완전 자동화한 일본 상용 SaaS.",
+        "relevance": "우리가 만들려는 루프(주제 발굴→생성→발행)를 상품화한 경쟁/벤치마크 — 기능 구성과 요금제에서 파이프라인 완성형의 기능 목록을 역산할 수 있음.",
+        "signals": "일본 시장 상용 서비스로 운영 중",
+        "func": "writing",
+        "region": "JP"
+      },
+      {
+        "name": "NAEO — 네이버 블로그 AI 인용/노출 최적화 솔루션",
+        "url": "https://www.naeo.kr/",
+        "platform": "web",
+        "kind": "tool",
+        "summary": "네이버 AI 브리핑 인용·노출에 특화된 한국 SaaS. 블로그 글을 AI 인용에 유리하게 최적화해 주는 국내 유일급 네이버 특화 GEO 도구.",
+        "relevance": "글 생성 파이프라인의 최적화 기준(제목·구조·문단)을 벤치마킹할 직접 경쟁/참고 서비스.",
+        "signals": "네이버 AI 브리핑 검색 결과 상위 노출 중인 상용 서비스",
+        "func": "geo",
+        "region": "KR"
+      },
+      {
+        "name": "Otterly.ai",
+        "url": "https://otterly.ai/",
+        "platform": "web",
+        "kind": "tool",
+        "summary": "AI 검색 모니터링 SaaS — ChatGPT·Perplexity·Google AI Overviews/AI Mode·Gemini·Copilot에서 브랜드 언급·인용 URL·share of voice를 프롬프트 단위로 추적. 50개국 이상 언어 지원.",
+        "relevance": "'인용수·유입 측정 → 전략 보정' 루프의 상용 벤치마크 — 어떤 지표(인용 URL, 프롬프트별 노출, 경쟁 비교)를 SQLite에 쌓을지 스키마 설계 참고.",
+        "signals": "엔트리 플랜 $29/월, 동종 도구(Profound·Peec 등) 대비 저가 진입 포지션",
+        "func": "geo",
+        "region": "US"
+      },
+      {
+        "name": "HeiGe-GEO-SEO",
+        "url": "https://github.com/HeiGeAi/HeiGe-GEO-SEO",
+        "platform": "github",
+        "kind": "tool",
+        "summary": "중국 시장 우선 GEO+SEO 콘텐츠 최적화 시스템 — 豆包·千问·DeepSeek·文心·元宝·ChatGPT에 인용되게 하는 것이 목표. Claude Code/Codex 호환 스킬 형태, 제로 의존성 Python, MIT.",
+        "relevance": "Claude Code 스킬 형태의 GEO 최적화 워크플로라 우리 하네스에 거의 그대로 이식 시험 가능",
+        "signals": "스타 24, 2026-08-14 업데이트, MIT",
+        "func": "geo",
+        "region": "CN"
+      },
+      {
+        "name": "GEO-Content-Optimizer-Skill",
+        "url": "https://github.com/liangdabiao/GEO-Content-Optimizer-Skill",
+        "platform": "github",
+        "kind": "tool",
+        "summary": "GEO 전 과정을 커버하는 3개의 Agent Skill 묶음 — AI 엔진(ChatGPT·Perplexity·Gemini·AI Overview) 인용률을 올리는 콘텐츠 최적화 방법론을 스킬화.",
+        "relevance": "글 생성 단계에 끼울 'GEO 최적화 스킬'의 프롬프트·단계 분해 방식 참고",
+        "signals": "스타 122, 포크 23, 2026-08-14 업데이트",
+        "func": "geo",
+        "region": "CN"
+      },
+      {
+        "name": "wanifuchi/llmo-checker — LLMO最適化チェックツール",
+        "url": "https://github.com/wanifuchi/llmo-checker",
+        "platform": "github",
+        "kind": "tool",
+        "summary": "일본어권에서 만든 웹사이트 LLMO(AI 최적화) 진단 도구. llms.txt 분석, 구조화 데이터(JSON-LD) 평가, 콘텐츠 구조 분석, E-E-A-T 평가, AI 경쟁 분석 항목을 자동 채점한다.",
+        "relevance": "우리 블로그 글이 AI 인용에 유리한 구조인지 발행 전 자동 점검하는 'GEO 린트' 단계의 체크 항목 설계에 그대로 참고 가능.",
+        "signals": "일본어 UI/문서, 검색 상위 노출",
+        "func": "geo",
+        "region": "JP"
+      },
+      {
+        "name": "마피아넷 (ma-pia.net)",
+        "url": "https://ma-pia.net/",
+        "platform": "web",
+        "kind": "tool",
+        "summary": "네이버 키워드 검색량 조회와 블로그 순위체크를 제공하는 한국 블로거들이 널리 쓰는 무료 웹 도구.",
+        "relevance": "국내 블로거가 실제로 쓰는 순위체크 UX·지표 구성(키워드 검색량+순위 결합)을 우리 측정 대시보드 설계의 벤치마크로 참고.",
+        "signals": "국내 블로그 마케팅 커뮤니티에서 표준적으로 언급되는 도구",
+        "func": "metrics",
+        "region": "KR"
+      },
+      {
+        "name": "SheepGeo (SHEEP-GEO 평가 프레임워크)",
+        "url": "https://github.com/CN-Sheep/SheepGeo",
+        "platform": "github",
+        "kind": "tool",
+        "summary": "웹사이트의 GEO 성과를 5차원(SHEEP) 지표로 과학적으로 평가하는 프레임워크. 중국 주류 AI 모델 9종에서의 가시성·권위성을 점수화한다.",
+        "relevance": "인용수 하나만 보지 않고 다차원 점수로 블로그의 AI 가시성을 평가하는 지표 체계 설계에 참고.",
+        "signals": "스타 49, 2026-08-11 최근 업데이트",
+        "func": "metrics",
+        "region": "CN"
+      },
+      {
+        "name": "I'm running an autonomous AI agent that publishes a fact-checked SEO article every day",
+        "url": "https://dev.to/paul_irolla_6b5ae261d0224/im-running-an-autonomous-ai-agent-that-publishes-a-fact-checked-seo-article-every-day-heres-the-1753",
+        "platform": "web",
+        "kind": "case",
+        "summary": "키워드 리서치→초안→팩트체크→내부링크→스키마 마크업→예약 발행까지 전자동으로 매일 1편 발행하는 에이전트 스택 공개 사례. 60일 만에 구글 노출 0→40만+.",
+        "relevance": "우리 '주제 발굴→생성→발행→측정' 루프와 거의 동일한 구조의 실전 사례 — 팩트체크·스키마 단계를 파이프라인에 넣는 아이디어 소스.",
+        "signals": "DEV Community 게시, 2026년 최신 사례",
+        "func": "publish",
+        "region": "US"
+      },
+      {
+        "name": "How I built SEO/GEO and got traffic in 6 weeks from day 0 (Indie Hackers)",
+        "url": "https://www.indiehackers.com/post/how-i-built-seo-geo-and-got-traffic-in-6-weeks-from-day-0-500eb37586",
+        "platform": "web",
+        "kind": "case",
+        "summary": "신규 사이트에서 프로그래매틱 AI 콘텐츠로 6주 만에 구글 인덱싱 283페이지 + Perplexity·ChatGPT 등 AI 엔진 유입을 얻은 인디해커 GEO 실험기.",
+        "relevance": "AI 검색(AI 브리핑) 인용을 노리는 우리 목표의 영어권 등가 사례 — 발행량·인덱싱률·AI 유입 측정 지표 설정에 참고.",
+        "signals": "Indie Hackers 게시, AI 엔진 유입 수치 공개",
+        "func": "publish",
+        "region": "US"
+      },
+      {
+        "name": "Playwright 知乎 SPA 발행 '가짜 성공' 함정 (juejin)",
+        "url": "https://juejin.cn/post/7657113781043871784",
+        "platform": "web",
+        "kind": "case",
+        "summary": "Playwright로 知乎 글을 자동 발행할 때 발행 버튼 클릭 후 페이지가 이동해도 실제로는 초안만 저장되는 SPA '가짜 성공' 함정을 다룬 트러블슈팅 글.",
+        "relevance": "네이버 블로그(스마트에디터도 SPA)에서 발행 성공을 DOM 이동만으로 판정하면 안 된다는 검증 로직 설계에 직접 적용되는 교훈.",
+        "signals": "2026년 게시(掘金)",
+        "func": "publish",
+        "region": "CN"
+      },
+      {
+        "name": "AIエージェントがNote自動投稿を実装するまで：非公式APIとの奮闘記",
+        "url": "https://note.com/a_g_e_n_t_b_o_t/n/n86da8314430b",
+        "platform": "note",
+        "kind": "case",
+        "summary": "AI 에이전트가 note 비공식 API를 리버스 엔지니어링해 자동 투고를 구현하기까지의 시행착오 기록.",
+        "relevance": "비공식 엔드포인트 분석의 함정(인증 만료, 스펙 변경, 차단)을 미리 보여주는 실패·우회 사례 — 네이버 비공식 경로 리스크 평가에 유용.",
+        "func": "publish",
+        "region": "JP"
+      },
+      {
+        "name": "革命：高品質なブログ記事を自動生成＆投稿するシステムが完成しました (イケハヤ)",
+        "url": "https://note.com/ihayato/n/n313fcd68336a",
+        "platform": "note",
+        "kind": "case",
+        "summary": "일본 유명 블로거 이케하야가 LLM으로 고품질 글을 자동 생성·자동 투고하는 시스템을 완성했다는 운영 사례+제작법 해설.",
+        "relevance": "생성→발행 전체 루프를 실운영에 올린 일본 AI 블로그 운영 사례 — 품질 관리와 발행 자동화의 균형점 참고.",
+        "signals": "일본 최대급 개인 블로거의 실운영 공개 글",
+        "func": "publish",
+        "region": "JP"
+      },
+      {
+        "name": "2026년 확 바뀐 네이버 알고리즘 — AI 브리핑부터 클립·메이트까지 (코드잇 블로그)",
+        "url": "https://sprint.codeit.kr/blog/naver-blog-algorithm-change-ai-briefing-clip-mate",
+        "platform": "web",
+        "kind": "case",
+        "summary": "2026년 네이버 검색 알고리즘 개편(AI 브리핑, 네이버 메이트, AI 인용수 집계)을 정리하고 블로거의 대응 방향을 제시한 글.",
+        "relevance": "AI 인용수가 유입보다 중요해진 환경에서 주제 선정 우선순위(경험형·전문성 주제)를 정하는 배경 지식.",
+        "func": "topic",
+        "region": "KR"
+      },
+      {
+        "name": "HN: 12k AI-generated blog posts added in a single commit",
+        "url": "https://news.ycombinator.com/item?id=47640722",
+        "platform": "web",
+        "kind": "case",
+        "summary": "AI 생성 글 1만2천 개를 한 커밋에 올린 사례를 두고 벌어진 Hacker News 토론 — 대량 AI 콘텐츠의 효과와 검색엔진 페널티 논쟁.",
+        "relevance": "대량 자동 발행의 리스크(스팸 판정·저품질 페널티) 감각을 잡는 반면교사 — 네이버 저품질 블로그 판정 회피 전략 설계에 참고.",
+        "signals": "Hacker News 토론 스레드",
+        "func": "topic",
+        "region": "US"
+      },
+      {
+        "name": "Qiita: 自動でブログを更新し続けるシステムを作る",
+        "url": "https://qiita.com/EasyCording/items/a61151eaa73f9d5d1730",
+        "platform": "qiita",
+        "kind": "case",
+        "summary": "블로그 페르소나·키워드 정의를 기반으로 Google News RSS에서 트렌드를 받아 Gemini가 기사 테마를 자동 선정하고 매일 정해진 시각에 생성·발행하는 완전 자동 블로그 시스템 구축기.",
+        "relevance": "우리 루프(주제 발굴→생성→발행)와 동형인 일본 사례 — RSS 트렌드를 LLM이 주제로 변환하는 주제 발굴 단계 설계 참고.",
+        "signals": "Qiita AI 태그 게시글, 2025~2026년대 사례",
+        "func": "topic",
+        "region": "JP"
+      },
+      {
+        "name": "Zenn: AIエージェントで技術ブログを自動化する方法 (SOMPOジャパンDX)",
+        "url": "https://zenn.dev/sompojapan_dx/articles/a76c614a232dee",
+        "platform": "web",
+        "kind": "case",
+        "summary": "기업 기술블로그를 AI 에이전트로 자동화한 사례. Search Console 검색 쿼리·실시간 트렌드를 AI가 자동 수집해 '살아있는 키워드'를 골라 집필하는 흐름을 다룬다.",
+        "relevance": "발행 후 유입 데이터(서치콘솔류)를 다시 주제 발굴에 되먹이는 전략 보정 루프 설계의 참고 — 우리 '인용수·유입 측정→보정' 단계와 대응.",
+        "signals": "Zenn 기업(손보재팬 DX) 계정 게시글 — 기업 실운영 사례",
+        "func": "topic",
+        "region": "JP"
+      },
+      {
+        "name": "GPTers — 네이버 블로그 포스팅 자동화 v.1",
+        "url": "https://www.gpters.org/dev/post/neibeo-beulrogeu-poseuting-jadonghwa-v-1-vpr5SYzLwldkKcG",
+        "platform": "web",
+        "kind": "case",
+        "summary": "주제·의도·키워드를 입력받아 ChatGPT API로 글을 생성하고 Selenium으로 네이버 블로그에 자동 등록하는 실전 구축기 (GPTers 커뮤니티).",
+        "relevance": "글 생성→자동 발행 루프를 실제로 붙인 한국어 사례로, 입력 설계(주제·의도·키워드)와 발행 자동화의 함정을 미리 볼 수 있다.",
+        "signals": "GPTers(국내 최대 AI 활용 커뮤니티) 게시글",
+        "func": "writing",
+        "region": "KR"
+      },
+      {
+        "name": "HN 토론: How Generative Engine Optimization (GEO) rewrites the rules of search",
+        "url": "https://news.ycombinator.com/item?id=44133279",
+        "platform": "web",
+        "kind": "case",
+        "summary": "GEO가 검색의 규칙을 어떻게 바꾸는지에 대한 Hacker News 커뮤니티 토론 스레드. 개발자 관점의 회의론·실전 경험이 섞여 있음.",
+        "relevance": "GEO 기법 중 무엇이 실제로 효과 있고 무엇이 과장인지 실무자 반응을 통해 걸러내는 데 참고 (전략 보정 단계의 감도 조절).",
+        "func": "geo",
+        "region": "US"
+      },
+      {
+        "name": "GEO优化实战指南 — 一周内让豆包、DeepSeek、Kimi推荐了我的插件",
+        "url": "https://www.cnblogs.com/navyum/articles/19118757",
+        "platform": "web",
+        "kind": "case",
+        "summary": "개인 개발자가 1주 만에 豆包·DeepSeek·Kimi가 자기 플러그인을 추천하게 만든 GEO 실전기 (博客园). 멀티플랫폼 일관 발행으로 인용률이 크게 오른다는 데이터(4개 플랫폼 일치 시 +470%) 포함.",
+        "relevance": "우리 '전략 보정' 단계의 가설(멀티플랫폼 일관성 → 인용률 상승)을 뒷받침하는 실측 사례",
+        "signals": "검색 결과 다수 인용되는 실전 후기",
+        "func": "geo",
+        "region": "CN"
+      },
+      {
+        "name": "Qiita — オーガニック圏外なのにAIOに引用された（構造化データとllms.txtが鍵）",
+        "url": "https://qiita.com/masakazuimai/items/9cbe96fe6bb0b9bd5b41",
+        "platform": "qiita",
+        "kind": "case",
+        "summary": "일반 검색 순위권 밖의 개인 개발 사이트가 구조화 데이터와 llms.txt 구현만으로 AI 개요(AIO)에 인용된 실측 사례 보고.",
+        "relevance": "검색 순위가 낮아도 AI 인용은 별도로 딸 수 있다는 근거 사례 — 네이버 AI 브리핑 인용 전략에서 '구조 최적화 우선' 가설을 뒷받침.",
+        "signals": "Qiita 개인개발 태그 인기 글",
+        "func": "geo",
+        "region": "JP"
+      },
+      {
+        "name": "Zenn 開発日記 — note API投稿断念とMarkdown自動生成への方針転換",
+        "url": "https://zenn.dev/centervil/articles/2025-04-24_055_dev-diary",
+        "platform": "zenn",
+        "kind": "case",
+        "summary": "LLM 파이프라인으로 note 자동 투고를 시도하다 비공식 API의 불안정성 때문에 포기하고, Markdown 자동 생성+수동 붙여넣기 하이브리드로 전환한 개발 일지.",
+        "relevance": "자동 발행이 막혔을 때의 폴백 설계(반자동 모드) 사례 — 네이버 에디터 자동화 실패 시 텔레그램으로 초안 전달하는 대안 경로 설계에 참고.",
+        "signals": "연재 개발일지 No.055, 2025-04",
+        "func": "geo",
+        "region": "JP"
+      },
+      {
+        "name": "How I Used AI SEO to Hit 200K Monthly Clicks (Indie Hackers)",
+        "url": "https://www.indiehackers.com/post/how-i-used-ai-seo-to-hit-200k-monthly-clicks-from-google-side-project-breakdown-342edb179d",
+        "platform": "web",
+        "kind": "case",
+        "summary": "인디해커가 AI 생성 콘텐츠+데이터 분석 자동화로 사이드 프로젝트를 월 20만 클릭까지 키운 과정 공유 글.",
+        "relevance": "1인 운영 규모에서 '자동 발행→성과 데이터 분석→콘텐츠 보정' 루프를 실제로 돌린 사례로, 우리 루프의 운영 감각(주기·지표 우선순위)에 참고.",
+        "signals": "Indie Hackers 커뮤니티 인기 포스트",
+        "func": "metrics",
+        "region": "US"
+      },
+      {
+        "name": "AIがサチコ(Search Console)を分析してリライトアドバイス (note)",
+        "url": "https://note.com/usagix4/n/nc8b258931649",
+        "platform": "note",
+        "kind": "case",
+        "summary": "Search Console 데이터를 AI에 넣어 리라이트 우선순위와 개선 조언을 받는 블로그 운영자의 실전 사례 (note).",
+        "relevance": "측정 데이터를 다음 글 전략(리라이트·주제 선정)에 LLM으로 환류시키는 '전략 보정' 단계의 운영 사례.",
+        "signals": "note 개인 운영 사례",
+        "func": "metrics",
+        "region": "JP"
+      },
+      {
+        "name": "Lynny House — 네이버 블로그 자동 포스팅 with ChatGPT 시리즈",
+        "url": "https://lynny.kr/%EB%84%A4%EC%9D%B4%EB%B2%84-%EB%B8%94%EB%A1%9C%EA%B7%B8-%EC%9E%90%EB%8F%99-%ED%8F%AC%EC%8A%A4%ED%8C%85-with-chatgpt-6-%EB%84%A4%EC%9D%B4%EB%B2%84-%EB%B8%94%EB%A1%9C%EA%B7%B8-%EC%9E%90%EB%8F%99/",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "ChatGPT로 글을 생성하고 네이버 블로그에 자동 등록하기까지를 단계별로 다룬 한국어 연재 튜토리얼(6편 시리즈).",
+        "relevance": "스마트에디터에 본문을 넣는 실전 요령(클립보드 붙여넣기 등)과 시행착오가 정리돼 있어 발행 모듈 구현 시 함정 회피에 유용.",
+        "signals": "연재형 실전 가이드",
+        "func": "publish",
+        "region": "KR"
+      },
+      {
+        "name": "用 Playwright 自动发帖到知乎和小红书 (fanyamin)",
+        "url": "https://www.fanyamin.com/2026-03-21-playwright-auto-posting.html",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "개발자가 Playwright로 知乎·小红书에 자동 포스팅하는 과정을 정리한 실전 가이드(로그인 세션 유지, 플랫폼별 처리).",
+        "relevance": "Playwright 로그인 세션 저장·재사용과 플랫폼별 에디터 조작 등 네이버 발행기 초기 구현 시 따라할 수 있는 튜토리얼.",
+        "signals": "2026-03 게시 개인 블로그",
+        "func": "publish",
+        "region": "CN"
+      },
+      {
+        "name": "Playwright ブラウザ自動化ツールで note に自動投稿する (Qiita)",
+        "url": "https://qiita.com/akiraak/items/0b7de8642cbf72d81271",
+        "platform": "qiita",
+        "kind": "knowledge",
+        "summary": "공개 API가 없는 note에 Playwright 브라우저 자동화로 글을 투고하는 구현 해설 기사.",
+        "relevance": "우리 스택(Python+Playwright)과 정확히 같은 접근 — API 없는 네이버 블로그 에디터를 Playwright로 조작하는 구현의 직접 레퍼런스.",
+        "func": "publish",
+        "region": "JP"
+      },
+      {
+        "name": "はてなブログAtomPub API 공식 문서",
+        "url": "https://developer.hatena.ne.jp/ja/documents/blog/apis/atom/",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "하테나 블로그가 공식 제공하는 AtomPub 투고 API 문서(WSSE/OAuth/Basic 인증, 초안·발행·수정).",
+        "relevance": "공식 API가 있는 플랫폼의 발행 인터페이스 표준형 — 브라우저 자동화 실패 시 대체 플랫폼(하테나) 발행 경로로 즉시 활용 가능.",
+        "func": "publish",
+        "region": "JP"
+      },
+      {
+        "name": "はてなブログへの自動投稿に対応した (GitHub Actions + AtomPub API)",
+        "url": "https://zenn.dev/beachone1155/articles/20251101-hatena-automation",
+        "platform": "zenn",
+        "kind": "knowledge",
+        "summary": "GitHub Actions에서 AtomPub API로 하테나 블로그에 자동 투고하는 CI 기반 발행 파이프라인 구축기(2025.11).",
+        "relevance": "git push→자동 발행이라는 CI형 발행 트리거 설계 참고 — 우리 파이프라인의 발행 단계를 스케줄러가 아닌 리포 이벤트로 걸 때의 사례.",
+        "signals": "2025-11 작성, Qiita/DEV/자체 블로그에 동시 게재",
+        "func": "publish",
+        "region": "JP"
+      },
+      {
+        "name": "파이썬으로 네이버 검색광고 API 키워드 검색량 조회 및 연관검색어 추출",
+        "url": "https://workingwithpython.com/naverkeywordplannerapi/",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "검색광고 API 키 발급부터 hintKeywords 파라미터로 검색량·연관검색어를 뽑는 전 과정을 파이썬 코드로 설명한 튜토리얼. 초당 3회 호출 제한(429) 대응 팁 포함.",
+        "relevance": "검색광고 API 인증(서명 생성)과 호출 제한 처리 등 우리 키워드 수집기 구현의 실전 절차 가이드.",
+        "func": "topic",
+        "region": "KR"
+      },
+      {
+        "name": "크리에이터 어드바이저로 블로그 주제·키워드 최근 트렌드 찾기",
+        "url": "https://omgdesignmedia.com/%ED%81%AC%EB%A6%AC%EC%97%90%EC%9D%B4%ED%84%B0-%EC%96%B4%EB%93%9C%EB%B0%94%EC%9D%B4%EC%A0%80-%EB%B8%94%EB%A1%9C%EA%B7%B8-%EC%A3%BC%EC%A0%9C-%ED%82%A4%EC%9B%8C%EB%93%9C-%EC%B5%9C%EA%B7%BC-%ED%8A%B8/",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "네이버 크리에이터 어드바이저의 트렌드 메뉴에서 주제별 조회수 상위 키워드를 찾고, 키워드마스터·블랙키위로 경쟁도를 2차 검증하는 실전 워크플로 글.",
+        "relevance": "'어드바이저 트렌드 → 검색량 조회 → 경쟁도 판정'이라는 주제 발굴 파이프라인의 단계 설계를 그대로 참고 가능.",
+        "func": "topic",
+        "region": "KR"
+      },
+      {
+        "name": "awesome-generative-engine-optimization",
+        "url": "https://github.com/amplifying-ai/awesome-generative-engine-optimization",
+        "platform": "github",
+        "kind": "knowledge",
+        "summary": "GEO(Generative Engine Optimization) 큐레이션 리스트 — AI 검색엔진에서 인용/노출되기 위한 가이드·도구·연구 논문 모음.",
+        "relevance": "네이버 AI 브리핑 인용을 노리는 '어떤 주제·형식이 AI에 인용되는가' 전략 수립과 주제 선정 기준의 출발점 자료.",
+        "signals": "스타 477, 포크 148, 2026-08 최근 업데이트",
+        "func": "topic",
+        "region": "US"
+      },
+      {
+        "name": "5118 키워드 종합분석 활용법 (즈후 칼럼)",
+        "url": "https://zhuanlan.zhihu.com/p/677481644",
+        "platform": "zhihu",
+        "kind": "knowledge",
+        "summary": "중국 대표 SEO SaaS '5118'로 키워드 하나에서 검색량 추세·수요 그래프·연관 핫워드·질문 기회·플랫폼별(즈후/공중하오/더우인) 콘텐츠까지 15종 정보를 뽑는 실전 가이드.",
+        "relevance": "키워드 리서치 기능의 산출물 스펙(수요 그래프·질문 기회·경쟁 콘텐츠 목록 등 어떤 뷰를 만들지)을 설계할 때 기능 카탈로그로 참고.",
+        "signals": "즈후 전문 칼럼, 5118은 중국 SEO 업계 표준급 도구",
+        "func": "topic",
+        "region": "CN"
+      },
+      {
+        "name": "Qiita: 【Python】Googleの検索エンジン・サジェストを収集する",
+        "url": "https://qiita.com/DisneyAladdin/items/3a914a3082fc178bef4e",
+        "platform": "qiita",
+        "kind": "knowledge",
+        "summary": "비공식 Google Suggest API를 Python으로 호출해 '쿼리+히라가나 한 글자'식 조합으로 검색량 무관 전체 서제스트를 긁어모으는 기법 해설.",
+        "relevance": "네이버 자동완성에서 '키워드+ㄱ~ㅎ' 조합으로 롱테일 질문 키워드를 전수 수집하는 질문 마이닝 구현의 직접 참고.",
+        "signals": "Qiita 게시글, 서제스트 수집 검색 시 상위 노출",
+        "func": "topic",
+        "region": "JP"
+      },
+      {
+        "name": "ニュープレス: LLMOのキーワード選定方法",
+        "url": "https://newpress.co.jp/blog/llmo-keyword-research/",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "AI 검색(LLMO) 시대의 키워드 선정법 해설 — 검색어가 아니라 'AI에 어떤 질문으로 던져질까'와 '답변 내 어떤 문맥에 들어갈까'를 역산해 질문·문맥 단위로 키워드를 설계하라는 프레임.",
+        "relevance": "네이버 AI 브리핑 인용을 노리는 우리 주제 발굴 기준을 '검색량'이 아닌 '질문·문맥' 축으로 재정의하는 데 직접 참고.",
+        "signals": "일본 LLMO 대응 컨설팅사 블로그, 2026년 기준 최신 주제",
+        "func": "topic",
+        "region": "JP"
+      },
+      {
+        "name": "マケスク: LLMOのキーワード選定とは？AI検索で狙うべき検索語句の見つけ方",
+        "url": "https://media.meo-taisaku.com/llmo/llmo_keyword_selection/",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "AI Overview에 인용되기 쉬운 키워드의 특성 정리 — 검색량 적은 롱테일일수록 AI 개요가 뜨기 쉽고, 평균 4어 구성·How형 질문 키워드가 많다는 데이터 기반 가이드.",
+        "relevance": "주제 발굴 시 '롱테일·질문형 우선' 스코어링 규칙을 만드는 정량 근거로 참고.",
+        "signals": "일본 MEO/LLMO 전문 미디어, 2026년 LLMO 키워드 검색 상위",
+        "func": "topic",
+        "region": "JP"
+      },
+      {
+        "name": "AI로 블로그 글 파이프라인 만들기 — 초안이 아니라 검증이 병목",
+        "url": "https://www.youngju.dev/blog/productivity/2026-08-02-ai-blog-content-pipeline",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "AI 블로그 글 파이프라인 실전기. 병목은 초안 생성이 아니라 사실 검증이며, 검증 에이전트로 환각 인용을 걸러 사람 검수 부담을 줄인 경험을 정리.",
+        "relevance": "리서치→초안→검수 구조에서 검수(품질 게이트)에 자원을 집중해야 한다는 설계 근거를 제공한다.",
+        "signals": "2026-08-02 게시(최신)",
+        "func": "writing",
+        "region": "KR"
+      },
+      {
+        "name": "Threads @wizsuni — 네이버 AI 브리핑 인용 글쓰기 기준",
+        "url": "https://www.threads.com/@wizsuni/post/DY8F0PNE8df",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "네이버 AI 브리핑에 인용되는 글의 조건 정리 — 직접 경험, 주제 일관성, 투명한 출처, 가독 구조. AI 무편집 글과 정보 나열은 걸러진다는 실전 관찰.",
+        "relevance": "글 생성 프롬프트와 품질 게이트 기준(경험 서사·출처·구조)을 설계할 때 그대로 체크리스트로 쓸 수 있다.",
+        "signals": "네이버 메이트 시행 이후 작성된 최신 실전 관찰 글",
+        "func": "writing",
+        "region": "KR"
+      },
+      {
+        "name": "아이보스 — 네이버 마케팅, 이제 순위보다 AI 브리핑 인용을 봅니다",
+        "url": "https://www.i-boss.co.kr/ab-6141-71497",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "국내 마케팅 커뮤니티 아이보스의 분석 글. 네이버 검색 최적화의 지표가 순위에서 AI 브리핑 인용으로 이동하고 있다는 관점과 대응 전략을 다룬다.",
+        "relevance": "인용수를 KPI로 삼는 우리 측정·전략 보정 단계에서 어떤 지표와 콘텐츠 기준을 볼지 정하는 배경 자료.",
+        "signals": "아이보스(국내 대표 마케팅 커뮤니티) 정보공유 게시글",
+        "func": "writing",
+        "region": "KR"
+      },
+      {
+        "name": "GEO 生成式引擎优化教程：让 AI 引用你的内容",
+        "url": "https://www.crazyowen.cn/geo/",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "중국어권의 GEO(생성형 엔진 최적화) 실전 튜토리얼. 'SEO는 클릭 경쟁, GEO는 인용 경쟁'이라는 프레임으로 결론 선행 구조, llms.txt, Schema 마크업, 사실 검증(과장·단정 과다 콘텐츠는 AI가 인용 안 함) 등 AI에게 인용되는 글쓰기 전략을 정리.",
+        "relevance": "네이버 AI 브리핑 '인용수'를 올리는 글 구조·품질 게이트 기준(결론 선행, 사실 검증, 구조화)에 그대로 이식 가능한 전략 문서.",
+        "signals": "중국어 GEO 관련 검색 다수 결과 중 실전 가이드형; CSDN 등에서도 동류 글 다수 확인",
+        "func": "writing",
+        "region": "CN"
+      },
+      {
+        "name": "AutoGen入門：マルチエージェントで自律型AIライターを構築 (Zenn)",
+        "url": "https://zenn.dev/secondselection/articles/ai_articles_generator",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "AutoGen 멀티에이전트 프레임워크로 주제 기반 검색→정보 정리→집필을 자율 수행하는 AI 라이터를 만드는 일본어 튜토리얼.",
+        "relevance": "리서치→초안→검수 멀티에이전트 작문 파이프라인의 역할 분담 설계 참고.",
+        "signals": "Zenn 기업 테크블로그(Second Selection) 게재",
+        "func": "writing",
+        "region": "JP"
+      },
+      {
+        "name": "【LLMO対策】AIに引用されるブログ記事の書き方",
+        "url": "https://note.com/mizuhiki_kaka/n/n12c1ac9e74f1",
+        "platform": "note",
+        "kind": "knowledge",
+        "summary": "마케터 관점에서 생성 AI 검색에 인용되는 블로그 글의 구조(결론 우선, 정의문, FAQ, 목록화, 1차 정보)를 정리한 LLMO 실전 가이드.",
+        "relevance": "네이버 AI 브리핑 인용을 노리는 글 생성 프롬프트의 '인용되기 쉬운 구조' 규칙 설계에 직결 — 일본 LLMO 노하우를 작문 파이프라인의 품질 게이트 기준으로 이식 가능.",
+        "signals": "일본에서 LLMO 대책 콘텐츠가 2025~26년 급증 중인 흐름의 대표 예",
+        "func": "writing",
+        "region": "JP"
+      },
+      {
+        "name": "Difyで実現するSEO記事の自動生成ワークフロー",
+        "url": "https://media.strikethrough.co.jp/dify-seo-llm/",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "Dify에서 Tavily 검색→Jina Reader 본문 추출→상위 기사 분석→목차 생성→본문 생성으로 이어지는 SEO 기사 자동 생성 워크플로 해설.",
+        "relevance": "주제 발굴 시 경쟁 상위글 수집·분석 후 초안을 만드는 리서치 단계 파이프라인 설계(검색→추출→분석→생성 체인)의 참고.",
+        "signals": "동일 매체에 Dify 기사 생성 시리즈 다수",
+        "func": "writing",
+        "region": "JP"
+      },
+      {
+        "name": "Zenn執筆をAIで自動化するworkflow.yamlとプロンプト設計",
+        "url": "https://zenn.dev/purple_matsu1/articles/20260227-zenn-workflow-design",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "AI 에이전트로 초안 작성→제목 고안→퇴고→공개 설정 준비를 일괄 수행하는 Zenn 집필 workflow.yaml과 프롬프트 설계를 공개한 글.",
+        "relevance": "초안→퇴고→발행 준비를 단계별 프롬프트로 분리하는 워크플로 정의(YAML 기반 단계 설계)와 SEO 제목 후보 생성 방식 참고.",
+        "signals": "2026-02 게재로 최신",
+        "func": "writing",
+        "region": "JP"
+      },
+      {
+        "name": "리드젠랩 GEO 실험실 — 네이버 AI 브리핑 노출 C-rank·AEO 가이드",
+        "url": "https://blog.lead-gen.team/naver-ai-briefing-seo-optimal-strategy",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "네이버 AI 브리핑에 인용되기 위한 C-rank·AEO 최적화 전략을 정리한 한국어 실무 가이드(한 페이지 한 질문, 질문-답변 문단 구조 등).",
+        "relevance": "글 생성 프롬프트에 넣을 네이버 특화 최적화 규칙(제목 매칭·문단 구조·수치 표기)의 근거 자료.",
+        "signals": "GEO 전문 에이전시 블로그, 2025~ 갱신",
+        "func": "geo",
+        "region": "KR"
+      },
+      {
+        "name": "GEO: Generative Engine Optimization (Princeton, KDD 2024)",
+        "url": "https://arxiv.org/abs/2311.09735",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "GEO라는 용어를 처음 정의한 프린스턴 등 공동 논문. 통계 인용·권위자 인용문·고유한 표현 등 특정 콘텐츠 수정이 생성형 엔진 인용 가시성을 최대 40% 올린다는 것을 통제 실험(GEO-bench 1만 쿼리)으로 입증.",
+        "relevance": "글 생성 단계의 프롬프트 규칙(어떤 문장 구조·근거 유형이 AI 인용을 높이는지)에 대한 학술적 근거로 직접 반영 가능.",
+        "signals": "ACM SIGKDD 2024 게재, GEO 분야 표준 벤치마크(GEO-bench)로 계속 인용됨",
+        "func": "geo",
+        "region": "US"
+      },
+      {
+        "name": "llms.txt 표준 (AnswerDotAI)",
+        "url": "https://github.com/answerdotai/llms-txt",
+        "platform": "github",
+        "kind": "knowledge",
+        "summary": "Jeremy Howard가 제안한 /llms.txt 스펙 원본 저장소 — LLM 크롤러가 사이트 구조·콘텐츠를 효율적으로 읽게 하는 robots.txt 격 표준. Mintlify·Yoast·Wix 등이 이미 자동 생성 지원.",
+        "relevance": "네이버 블로그엔 직접 못 심지만, AI 인용 최적화에서 '기계가 읽기 좋은 구조'가 무엇인지의 기준점이자, 별도 자체 사이트 운영 시 필수 항목.",
+        "signals": "llms-txt-hub 등 파생 생태계 활발 (firecrawl 생성기, 디렉터리 등)",
+        "func": "geo",
+        "region": "US"
+      },
+      {
+        "name": "How to Get Cited by ChatGPT, Perplexity, and Google AI Overviews: A Practical Checklist",
+        "url": "https://www.joinamply.com/post/how-to-get-cited-by-chatgpt-perplexity-and-google-ai-overviews",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "AI 인용을 받기 위한 실무 체크리스트 — 섹션 첫머리 직답, FAQ/Article 스키마, 인용하기 좋은 포맷(정의·번호 목록·비교표), E-E-A-T 신호, llms.txt 등. 리스티클이 전체 AI 인용의 21.9%를 차지한다는 2026년 포맷 통계도 인용.",
+        "relevance": "글 생성 프롬프트에 넣을 '인용 잘 되는 글 구조' 규칙을 체크리스트 형태로 바로 이식할 수 있는 실무 자료.",
+        "func": "geo",
+        "region": "US"
+      },
+      {
+        "name": "awesome-geo-cn",
+        "url": "https://github.com/LLM-X-Factorer/awesome-geo-cn",
+        "platform": "github",
+        "kind": "knowledge",
+        "summary": "중국어 GEO 자원 큐레이션 리스트 — Kimi·DeepSeek·文心一言에 더해 知乎·小红书 같은 플랫폼별 AI 검색 생태까지 커버.",
+        "relevance": "중국 GEO 생태의 도구·글을 한 번에 훑는 진입점으로, 후속 심층 조사 씨앗 목록",
+        "signals": "스타 29, 2026-08-11 업데이트",
+        "func": "geo",
+        "region": "CN"
+      },
+      {
+        "name": "如何让AI引用你的内容——深度实操指南 (知乎)",
+        "url": "https://zhuanlan.zhihu.com/p/2017599060840838627",
+        "platform": "zhihu",
+        "kind": "knowledge",
+        "summary": "AI가 인용하는 콘텐츠의 3요소(신뢰도·구조 명확성·엔티티 명시)와 통계·권위 출처·전문가 인용 삽입 시 가시성 30~40% 상승 등 GEO 실무 기법 정리 글.",
+        "relevance": "글 생성 프롬프트에 넣을 '인용 잘 되는 글 구조' 규칙(4단 구조, 검증 가능한 데이터 삽입)의 원천 자료",
+        "signals": "知乎 전문 칼럼, 2026년 작성",
+        "func": "geo",
+        "region": "CN"
+      },
+      {
+        "name": "株式会社火燵 — llms.txtは引用に必要なのか？実測ログ検証",
+        "url": "https://kotatsu.info/llms-txt-effect/",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "llms.txt가 실제 AI 인용에 미치는 효과를 자사 서버 로그·실측 데이터로 검증한 글. 인용 여부는 본문 구조·신뢰성이 더 크고, 우선순위는 콘텐츠 확충→JSON-LD→외부 언급→llms.txt 순이라고 결론.",
+        "relevance": "인용수 측정 루프에서 어떤 시책이 실제 효과가 있는지 판단하는 실험 설계·우선순위 결정에 참고.",
+        "signals": "2026년 실측 데이터 기반, Google Mueller 견해 인용",
+        "func": "geo",
+        "region": "JP"
+      },
+      {
+        "name": "Zenn — /llms.txtファイル規格で変わるAIとの情報連携",
+        "url": "https://zenn.dev/toitoy8/articles/llms-txt-standard",
+        "platform": "zenn",
+        "kind": "knowledge",
+        "summary": "Answer.AI Jeremy Howard가 제안한 llms.txt 표준의 규격·작성법·역할을 일본어로 정리한 기술 해설.",
+        "relevance": "블로그(또는 연계 사이트)에 llms.txt를 넣을 때 규격 준수 구현의 레퍼런스.",
+        "signals": "Zenn 기술 해설 글",
+        "func": "geo",
+        "region": "JP"
+      },
+      {
+        "name": "Threads @blog.oppa — AI 브리핑 인용수 확인 위치 정리",
+        "url": "https://www.threads.com/@blog.oppa/post/DZJZOCWEwpi/",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "AI 브리핑 인용수의 정의, 2026년 1월부터 누적 집계, 6월 4일부터 각 서비스 프로필에서 본인 인용수 확인 가능하다는 실전 정리 스레드.",
+        "relevance": "citation monitoring의 데이터 소스(서비스 프로필 인용수 표시 위치)를 특정해줘 Playwright로 어디를 긁을지 결정하는 데 직접 참고.",
+        "signals": "2026년 최신 정보, 네이버 블로그 전문 계정",
+        "func": "metrics",
+        "region": "KR"
+      },
+      {
+        "name": "SEO NEWS — 네이버 AI 브리핑, Top10 밖 콘텐츠도 인용",
+        "url": "https://seonews.co.kr/naver-ai-briefing-geo-202605/",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "네이버 AI 브리핑이 검색 상위 10위 밖 콘텐츠도 인용한다는 실측 분석 — 순위와 인용이 분리되는 'AI 선택 구조' 변화를 다룬 기사.",
+        "relevance": "순위 추적과 인용 모니터링을 별도 지표로 다뤄야 한다는 근거 — 측정 루프에서 rank와 citation을 독립 축으로 설계하는 판단에 참고.",
+        "signals": "2026년 5월 실측 데이터 기반 분석",
+        "func": "metrics",
+        "region": "KR"
+      },
+      {
+        "name": "Ahrefs — How to Earn LLM Citations to Build Traffic & Authority",
+        "url": "https://ahrefs.com/blog/llm-citations/",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "LLM 인용을 얻는 요인을 데이터로 분석한 가이드. 리스트형 글·표 포함 글·2000자 이상 장문이 인용률이 2~3배 높다는 등 RAG 기반 AI 검색에서 인용되는 콘텐츠 조건을 정리.",
+        "relevance": "측정 결과를 다음 글 전략(구조·길이·포맷)으로 되먹임하는 보정 규칙의 초기 가설로 바로 쓸 수 있는 인용 유발 요인 목록.",
+        "signals": "Ahrefs 자체 대규모 데이터 기반 분석",
+        "func": "metrics",
+        "region": "US"
+      },
+      {
+        "name": "白杨SEO — 기업의 AI 인용률/언급률 검측·개선법",
+        "url": "https://zhuanlan.zhihu.com/p/2040786268573984592",
+        "platform": "zhihu",
+        "kind": "knowledge",
+        "summary": "더우바오·DeepSeek·千问·Kimi 등에서 브랜드 AI 인용률을 측정하는 방법론 글. 인용률 공식(인용된 질문 수/전체 테스트 질문 수), 10%/30% 기준선, 고정 질문 샘플·다회 샘플링 원칙을 제시.",
+        "relevance": "네이버 AI 브리핑 인용률을 측정할 때의 지표 정의·샘플링 설계(고정 질문셋, 반복 측정, 기준선)에 바로 적용 가능한 방법론.",
+        "signals": "白杨SEO — 중국 SEO/GEO 분야 유명 실무 저자",
+        "func": "metrics",
+        "region": "CN"
+      },
+      {
+        "name": "Google Search Console APIを使ってSEO改善を自動化する (Zenn)",
+        "url": "https://zenn.dev/asoventure/articles/2026-07-19-gsc-api-seo-automation",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "GSC API를 Vercel Cron으로 정기 호출해 평균 순위가 낮은 글을 자동 식별하고, Gemini API로 SEO 리라이트 → IndexNow 재색인 통지 → Discord 자동 리포트까지 이어지는 전자동 개선 루프 구축기.",
+        "relevance": "우리 프로젝트의 '측정→전략 보정→재발행' 루프와 구조가 거의 동일해 파이프라인 설계의 직접 참고가 된다.",
+        "signals": "2026-07 게시, Zenn 기술 아티클",
+        "func": "metrics",
+        "region": "JP"
+      },
+      {
+        "name": "GAS + Claude API + Search Console SEO주간 리포트 자동 생성 시스템 (Zenn)",
+        "url": "https://zenn.dev/bentenweb_fumi/articles/seo-weekly-20260418",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "Google Apps Script + Claude API로 Search Console·WordPress 데이터를 매주 요약해 Discord로 전송하는 주간 SEO 리포트 자동화 사례.",
+        "relevance": "발행 성과를 LLM으로 요약해 텔레그램으로 보내는 우리 통계 리포트 기능의 설계 참고.",
+        "signals": "2026-04 게시",
+        "func": "metrics",
+        "region": "JP"
+      },
+      {
+        "name": "AIO・LLMO対策ツールおすすめ9選 (mediareach)",
+        "url": "https://mediareach.co.jp/blog/llmo-tool",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "ChatGPT·Gemini·AI Overview 등 AI 검색에서 자사 브랜드의 인용·언급을 계측하는 일본산 LLMO 계측 도구(DolphinX AIO 등) 9종 비교 (2026년판).",
+        "relevance": "네이버 AI 브리핑 인용수 모니터링 기능을 설계할 때 일본 LLMO 계측 도구들이 어떤 지표(인용·언급·추천 노출)를 측정하는지 벤치마크.",
+        "signals": "2026년판 최신 정리",
+        "func": "metrics",
+        "region": "JP"
+      },
+      {
+        "name": "AIOチェッカー・LLMOチェッカー比較9選 (unomas)",
+        "url": "https://unomas.jp/ai-checker-tool-comparison/",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "AI 회답 모니터링 도구들을 대응 AI 엔진 × 요금 축으로 비교한 일본어 정리. 경쟁 브랜드 등록 후 동일 조건 노출 차 비교 같은 기능 소개.",
+        "relevance": "인용수 측정 지표 설계(어떤 프롬프트로 몇 회 질의해 인용 여부를 판정하는지)의 기능 목록 참고.",
+        "signals": "2026년판, 무료 진단 포함",
+        "func": "metrics",
+        "region": "JP"
+      },
+      {
+        "name": "検索順位をStreamlitでグラフ化する自作Pythonツール (雑学エンジニアブログ)",
+        "url": "https://zatsugaku-engineer.com/python/blog-rank-checker/",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "블로그 글의 검색 순위를 Python으로 수집해 Streamlit 대시보드로 그래프화하는 자작 순위 체크 도구 제작기.",
+        "relevance": "SQLite에 쌓은 순위·유입 데이터를 간단한 대시보드로 시각화하는 최소 구현 예시.",
+        "signals": "개인 기술 블로그, 코드 공개",
+        "func": "metrics",
+        "region": "JP"
+      },
+      {
+        "name": "Pythonで無料の検索順位チェックツールを自作した話 (at backyard)",
+        "url": "https://shinshin86.hateblo.jp/entry/2021/04/30/121618",
+        "platform": "web",
+        "kind": "knowledge",
+        "summary": "GRC·RankTracker 등 기존 순위 추적 도구를 비교한 뒤 Google Custom Search API 기반으로 무료 순위 체크 도구를 Python으로 자작한 하테나 블로그 글.",
+        "relevance": "스크레이핑 금지 제약을 API로 우회하는 순위 측정 접근법과 기존 도구 대비 자작의 손익 판단 참고.",
+        "signals": "하테나 블로그, 코드 공개",
+        "func": "metrics",
+        "region": "JP"
+      },
+      {
+        "name": "YouTube 재생목록 — 네이버 블로그 자동화 글쓰기 프로그램",
+        "url": "https://www.youtube.com/playlist?list=PL6mJt0pU883bwqm_XC623ZieYlfuZibV2",
+        "platform": "youtube",
+        "kind": "video",
+        "summary": "파이썬으로 네이버 블로그 자동 글쓰기 프로그램을 만드는 과정을 담은 한국어 강의 재생목록.",
+        "relevance": "발행 자동화 구현을 화면과 함께 따라갈 수 있는 영상 자료 — 에디터 조작 순서를 눈으로 확인하는 용도.",
+        "signals": "재생목록 형태의 연속 강의",
+        "func": "publish",
+        "region": "KR"
+      },
+      {
+        "name": "n8n: Auto Post to WordPress with AI (FULL TUTORIAL)",
+        "url": "https://www.youtube.com/watch?v=XLCZJnzZu1I",
+        "platform": "youtube",
+        "kind": "video",
+        "summary": "AI로 SEO 글을 생성해 WordPress REST API로 자동 발행하는 전체 과정을 보여주는 영어 튜토리얼 영상.",
+        "relevance": "자동 발행 파이프라인을 처음부터 조립하는 과정을 영상으로 훑어 우리 구현 순서(인증→초안→발행→예약)를 잡는 데 참고.",
+        "signals": "YouTube 튜토리얼, n8n+WordPress 조합",
+        "func": "publish",
+        "region": "US"
+      },
+      {
+        "name": "네이버 AI 브리핑 공략법: 내 블로그가 AI 공식 답변이 되는 법 (AIO 실전)",
+        "url": "https://www.youtube.com/watch?v=sR20n2SZoxU",
+        "platform": "youtube",
+        "kind": "video",
+        "summary": "네이버 AI 브리핑에 블로그 글이 인용되게 하는 AIO(AI 최적화) 실전 전략을 다룬 영상.",
+        "relevance": "어떤 질의형 주제·키워드가 AI 브리핑에 인용되기 쉬운지 주제 선정 기준을 세우는 데 참고.",
+        "func": "topic",
+        "region": "KR"
+      },
+      {
+        "name": "YouTube: how i built an ai seo keyword research automation in n8n (free template)",
+        "url": "https://www.youtube.com/watch?v=5k1vCtG9Dfk",
+        "platform": "youtube",
+        "kind": "video",
+        "summary": "n8n과 LLM으로 키워드 리서치를 자동화하는 워크플로 구축 튜토리얼 (무료 템플릿 제공) — DataForSEO 연동형 키워드 자동화 흐름도 관련 자료(https://dataforseo.com/help-center/automate-keyword-research-with-n8n-and-dataforseo)와 짝을 이룸.",
+        "relevance": "키워드 수집→LLM 판단→토픽 클러스터링으로 이어지는 자동화 파이프라인 단계 구성을 우리 Python 파이프라인 설계로 옮길 때 참고.",
+        "signals": "n8n SEO 자동화 튜토리얼, 무료 템플릿 배포",
+        "func": "topic",
+        "region": "US"
+      },
+      {
+        "name": "100% AUTOMATED Blogging with AI Agents in n8n! (YouTube)",
+        "url": "https://www.youtube.com/watch?v=-j9P2dkqXa4",
+        "platform": "youtube",
+        "kind": "video",
+        "summary": "n8n으로 리서치 에이전트(중복 주제 회피·트렌드 발굴·SEO 브리프)→라이터 에이전트→이미지 프롬프트 에이전트를 엮어 발행까지 완전 자동화하는 튜토리얼. 무료 템플릿 제공.",
+        "relevance": "에이전트 역할 분담(리서치/작성/이미지)과 '기존 글 제목 조회로 중복 방지' 같은 실무 디테일을 우리 주제 발굴 단계에 이식할 수 있음.",
+        "signals": "무료 워크플로 템플릿 배포(aifoundations.io), n8n 블로그 자동화 튜토리얼 중 상위 노출",
+        "func": "writing",
+        "region": "US"
+      },
+      {
+        "name": "YouTube — 【成功事例あり】AI検索時代のLLMO対策の教科書 完全ガイド（2026年最新版）",
+        "url": "https://www.youtube.com/watch?v=_2ZkS6IjzDE",
+        "platform": "youtube",
+        "kind": "video",
+        "summary": "일본 마케팅 채널의 LLMO 대책 총정리 영상. AI 검색에서 인용·추천되기 위한 성공 사례와 2026년 최신 시책(멀티모달, 지역×전문영역 조합 등)을 해설.",
+        "relevance": "일본 시장에서 통용되는 LLMO 시책 목록을 빠르게 훑어 주제 발굴·글 구조 전략에 반영할 아이디어 소스.",
+        "signals": "2026년판, 검색 상위 노출 영상",
+        "func": "geo",
+        "region": "JP"
+      },
+      {
+        "name": "ZeroRank AI Review: Track Your Brand in ChatGPT, Gemini & Perplexity",
+        "url": "https://www.youtube.com/watch?v=Q_CyvLlpY-8",
+        "platform": "youtube",
+        "kind": "video",
+        "summary": "AI 검색(ChatGPT·Gemini·Perplexity)에서 브랜드 노출·인용을 추적하는 AI 가시성 도구의 화면 워크스루 리뷰 영상.",
+        "relevance": "AI 인용 추적 도구가 실제로 어떤 화면·지표·리포트를 제공하는지 빠르게 파악해 우리 텔레그램 리포트·대시보드 항목 설계에 참고.",
+        "signals": "2026년 AI visibility 튜토리얼 영상",
+        "func": "metrics",
+        "region": "US"
+      }
+    ],
+    "stats": {
+      "raw": 160,
+      "unique": 129,
+      "kept": 24
+    }
+  }
+}
