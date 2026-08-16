@@ -344,19 +344,26 @@ def main() -> None:
         print("검색 노출은 글 단위 발행 옵션이며, 발행 모듈이 매번 '전체공개+검색허용'을 보장합니다.")
         state["p2_ai_consent"] = "해당 없음 — 글 단위 발행 옵션으로 C3에서 보장 (2026-08-17 확인)"
         save_state(state)
+        # 블로그 ID — 관리 페이지 URL에 필요 (루트 주소는 404라 반드시 ID를 붙여야 함)
+        blog_id = config.NAVER_BLOG_ID
+        if not blog_id:
+            blog_id = ask("네이버 블로그 ID (blog.naver.com/<이것>)")
+            if blog_id:
+                save_env("NAVER_BLOG_ID", blog_id)
+
         step_manual(
             state, "p7_profile",
             "5단계 — 블로그 프로필·카테고리 정리 (P7)",
-            "https://admin.blog.naver.com",
+            f"https://admin.blog.naver.com/AdminMain.naver?blogId={blog_id}",
             "방치 상태였다면: 블로그명·소개글·프로필 이미지를 정리하고,\n"
             "글을 담을 카테고리를 2~3개 만들어 주세요 (주제는 나중에 시스템이 정합니다).",
         )
         step_manual(
             state, "p8_citation_ui",
             "6단계 — 프로필 인용수 UI 확인 (P8) ※ 측정 루프의 1차 지표",
-            "https://blog.naver.com",
+            f"https://blog.naver.com/{blog_id}",
             "내 블로그 프로필에서 'AI 브리핑 인용수'가 표시되는 위치를 찾아주세요.\n"
-            "(2026-06부터 제공된다고 알려져 있으나 실계정 확인이 필요합니다)",
+            "(2026-06부터 제공된다고 알려져 있으나 실계정 확인이 필요합니다 — asserted)",
             record_answer=True,
         )
 

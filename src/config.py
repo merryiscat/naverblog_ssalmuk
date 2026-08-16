@@ -89,3 +89,4 @@ SEARCHAD_SECRET_KEY = os.getenv("SEARCHAD_SECRET_KEY", "")
 SEARCHAD_CUSTOMER_ID = os.getenv("SEARCHAD_CUSTOMER_ID", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+NAVER_BLOG_ID = os.getenv("NAVER_BLOG_ID", "")  # blog.naver.com/<이 값>
