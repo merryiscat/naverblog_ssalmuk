@@ -63,9 +63,19 @@
 - 실행 환경: **미니PC 상시 ON**, 검색량 소스: **검색광고 API 가입**, 이미지: 차트/카드+AI 생성 혼용
 - 초기 셋업은 **셋업 위저드**(C0)가 로그인 세션 저장까지 안내·대행
 
-## 미확정 (3부에서)
+## 3부 결과 — 스택·하네스 확정 (2026-08-16)
 
-- 스택 확정 — usecases.md "기술 요구 집계"로 1부 스택 가설 보정
-- 하네스(스킬·MCP) 선택 — naver-search-mcp가 유력 후보로 올라와 있음
-- 주제 선정 로직의 구체 수식 — 골든키워드·선제 스코어링 조합 (구현 단계)
-- 발행 방식 실험 — 하이브리드(로그인만 브라우저 + 내부 API) 가능 여부, 불가 시 풀 Playwright
+**스택** (1부 가설 + 2부 기술 요구 집계로 확정):
+Python + uv / SQLite / Playwright(발행·측정·관찰 공용 세션) / OpenAI SDK
+(작문 gpt-4.1 계열 · 판단 gpt-5.4-mini · 일일 보정 gpt-5.4) / 네이버 오픈API(데이터랩·검색) /
+검색광고 API / python-telegram-bot류 / APScheduler류 상주 스케줄러 / matplotlib·HTML→이미지 렌더.
+가설 대비 추가: 스케줄러, 이미지 렌더, 검색광고 API. 제외된 것 없음.
+
+**하네스**: PLAYBOOK "Python 자동화·봇·파이프라인" 프로필 — **추가 스킬·MCP 설치 없음**
+(글로벌로 충분, DB가 SQLite라 Supabase MCP 불필요, Playwright MCP는 글로벌 연결분을 개발 검수에 사용).
+naver-search-mcp는 조건부 보류 → [pending.md](pending.md), kickoffpack CATALOG에 검토 기록.
+
+## 미확정 (구현 단계에서)
+
+- 주제 선정 로직의 구체 수식 — 골든키워드·선제 스코어링 조합 (C1 구현 시)
+- 발행 방식 실험 — 하이브리드(로그인만 브라우저 + 내부 API) 가능 여부, 불가 시 풀 Playwright (C3 구현 시)
