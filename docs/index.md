@@ -1,0 +1,15 @@
+# docs 인덱스
+
+## 기획
+- [plan.md](plan.md) — 킥오프 요약: 목표, 메이트 프로그램 구조, 확정 사항, 스택, 리스크
+- [usecases.md](usecases.md) — 유즈케이스(2부): 운영 원칙, 공통 전제, 선결 과제 P1~P9, 케이스 C0~C7, 기술 요구 집계
+
+## 레퍼런스
+- [references.md](references.md) — 유사 구현체·GEO 지식·메이트 사례·제재 신호 수집 그래프 (keep 24 / drop 6 / 미검증 99)
+- raw/ — 원본 불변 보존 (reference-sweep-2026-08-16.json)
+
+## 위키 운영
+- [log.md](log.md) — append-only 작업 기록
+- [status.md](status.md) — 작업 보드 (착수 전 먼저 읽기)
+- [mistakes.md](mistakes.md) — 실수 연대기 (항체 포함)
+- [pending.md](pending.md) — 보류 안건 대장

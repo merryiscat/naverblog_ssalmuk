@@ -1,0 +1,6 @@
+# 작업 기록 (append-only)
+
+## [2026-08-15] 킥오프 1부 | 프로젝트 성격 확정 — plan.md 초안 커밋
+## [2026-08-16] 레퍼런스 수집 | 매트릭스 스윕 20셀 → references.md (keep 24)
+## [2026-08-16] llmwiki init | 위키 뼈대 + 스키마 블록 + Stop/SessionStart 훅 설치
+## [2026-08-16] 킥오프 2부 | 유즈케이스 인터뷰 완료 → usecases.md (C0~C7, 선결 P1~P9)
