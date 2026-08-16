@@ -1,0 +1,91 @@
+"""설정 — .env 로드, 경로, 모델 단가, 하드 가드레일 상수.
+
+하드 가드레일 4종은 여기 상수로 고정한다. 일일 자가 보정(LLM)은 이 값을
+읽을 수만 있고 바꿀 수 없다 — 바꾸는 방법은 사람이 이 파일을 수정하는 것뿐.
+(usecases.md "운영 원칙" 참조)
+"""
+
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# 프로젝트 루트 (이 파일의 두 단계 위 폴더)
+ROOT = Path(__file__).resolve().parent.parent
+
+# .env 파일에서 API 키 등을 읽어온다
+load_dotenv(ROOT / ".env")
+
+# ---------------------------------------------------------------------------
+# 하드 가드레일 — 시스템(자가 보정 LLM 포함)이 절대 넘을 수 없는 선
+# ---------------------------------------------------------------------------
+
+# ① 하루 최대 발행 건수. 네이버 어뷰징 필터("작성자의 활동 패턴을 본다") 대응 —
+#    'AI 따발총' 계정 제재 사례가 있어 이 값이 곧 생존 조건이다.
+DAILY_PUBLISH_LIMIT = 2
+
+# ② 월 운영비 상한 (원). 도달하면 파이프라인 자동 정지 + 텔레그램 알림.
+MONTHLY_BUDGET_KRW = 30_000
+# 비용은 달러로 적산하므로 환산 환율을 둔다 (보수적으로 넉넉히 잡음)
+USD_KRW = 1_450
+MONTHLY_BUDGET_USD = MONTHLY_BUDGET_KRW / USD_KRW
+
+# ③ 발행 외 상호작용(공감·댓글·서로이웃) 자동화 금지 —
+#    2025-07부터 네이버가 봇 행위를 강력 차단, 계정 제재 사례 있음.
+#    이 항목은 상수가 아니라 "그런 코드를 만들지 않는다"는 규칙이다.
+
+# ④ 품질 게이트 미달 글 발행 금지 — 재생성 최대 횟수만 여기 둔다.
+GATE_MAX_RETRIES = 2
+
+# ---------------------------------------------------------------------------
+# 경로 — 런타임 데이터는 전부 data/ 아래 (git 제외 대상)
+# ---------------------------------------------------------------------------
+
+DATA_DIR = ROOT / "data"
+DB_PATH = DATA_DIR / "naverblog.db"
+SESSION_PATH = DATA_DIR / "session" / "storage_state.json"  # 네이버 로그인 세션
+POSTS_DIR = DATA_DIR / "posts"    # 생성된 글 본문(마크다운/HTML)
+IMAGES_DIR = DATA_DIR / "images"  # 생성된 썸네일·본문 이미지
+
+
+def ensure_dirs() -> None:
+    """data/ 아래 필요한 폴더를 만들어 둔다 (없으면 생성, 있으면 그대로)."""
+    for d in (DATA_DIR, SESSION_PATH.parent, POSTS_DIR, IMAGES_DIR):
+        d.mkdir(parents=True, exist_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# OpenAI 모델 역할 분담과 단가 (상위 CLAUDE.md 모델 선택 원칙 준수)
+# ---------------------------------------------------------------------------
+
+MODEL_WRITER = "gpt-4.1"        # 글 작문 (코딩/작문 특화)
+MODEL_JUDGE = "gpt-5.4-mini"    # 판단 — 주제 스코어링, 품질 게이트 채점
+MODEL_STEER = "gpt-5.4"         # 일일 자가 보정 (최상위 판단)
+
+# 1M 토큰당 달러 단가: (입력, 출력). 비용 적산(llm.py)에 쓴다.
+PRICES_PER_MTOK = {
+    "gpt-5.5": (5.00, 30.00),
+    "gpt-5.4": (2.50, 15.00),
+    "gpt-5.4-mini": (0.75, 4.50),
+    "gpt-5.4-nano": (0.20, 1.25),
+    "gpt-4.1": (2.00, 8.00),
+    "gpt-4.1-mini": (0.40, 1.60),
+    "gpt-4.1-nano": (0.10, 0.40),
+}
+
+# 이미지 1장당 추정 비용(달러) — 실제 단가는 크기·품질에 따라 다르므로
+# 보수적(높게) 잡고, 정확한 값은 이미지 기능 구현 시 보정한다.
+IMAGE_COST_USD = 0.05
+
+# ---------------------------------------------------------------------------
+# 환경 변수 (비어 있으면 셋업 위저드가 채우도록 안내)
+# ---------------------------------------------------------------------------
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "")
+NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
+SEARCHAD_API_KEY = os.getenv("SEARCHAD_API_KEY", "")
+SEARCHAD_SECRET_KEY = os.getenv("SEARCHAD_SECRET_KEY", "")
+SEARCHAD_CUSTOMER_ID = os.getenv("SEARCHAD_CUSTOMER_ID", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
