@@ -166,8 +166,9 @@ def step_env_keys() -> dict:
         status["searchad"] = "설정됨 (검증은 C1 구현 시)"
     else:
         print("\n[검색광고 API] https://searchad.naver.com 광고주 가입")
-        print("  → 도구 > API 사용 관리에서 키 발급 (액세스라이선스·비밀키·CUSTOMER_ID)")
-        v = ask("SEARCHAD_API_KEY (건너뛰려면 Enter)")
+        print("  → 도구 > API 사용 관리에서 키 발급. 화면 용어와 대응:")
+        print("     액세스라이선스 = SEARCHAD_API_KEY / 비밀키 = SEARCHAD_SECRET_KEY / CUSTOMER_ID = 그대로")
+        v = ask("SEARCHAD_API_KEY = 액세스라이선스 (건너뛰려면 Enter)")
         if v:
             save_env("SEARCHAD_API_KEY", v)
             save_env("SEARCHAD_SECRET_KEY", ask("SEARCHAD_SECRET_KEY"))
