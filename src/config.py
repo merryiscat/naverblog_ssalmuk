@@ -81,6 +81,11 @@ IMAGE_COST_USD = 0.05
 # 환경 변수 (비어 있으면 셋업 위저드가 채우도록 안내)
 # ---------------------------------------------------------------------------
 
+# Playwright headless의 기본 UA는 'HeadlessChrome'이라 네이버가 세션을 거부한다
+# — 발행·측정 등 세션 브라우저는 모두 이 UA를 쓴다
+BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+              "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")

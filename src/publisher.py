@@ -160,13 +160,9 @@ def publish(post_id: int, conn: sqlite3.Connection | None = None, *,
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=headless)
-            # headless 크롬은 UA에 'HeadlessChrome'이 박혀 네이버가 세션을 거부할 수 있다
-            # → 일반 크롬 UA로 고정 (세션 저장 시점의 환경과 일치시킴)
             context = browser.new_context(
                 storage_state=str(config.SESSION_PATH),
-                user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                            "Chrome/131.0.0.0 Safari/537.36"),
+                user_agent=config.BROWSER_UA,  # HeadlessChrome UA는 세션 거부됨
             )
             page = context.new_page()
             try:
