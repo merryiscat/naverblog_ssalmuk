@@ -74,8 +74,10 @@ def gather_input(conn: sqlite3.Connection) -> dict:
     ranks = [dict(r) for r in conn.execute(
         "SELECT keyword, rank, ai_cited FROM rankings WHERE date = ?", (today,))]
     metric = conn.execute("SELECT * FROM metrics WHERE date = ?", (today,)).fetchone()
+    from src.competitors import recent_summary  # 순환 임포트 방지 (지연 임포트)
     return {
         "topics": topics, "posts": posts, "ranks": ranks,
+        "competitor_watch": recent_summary(conn),  # 공백 기회·브리핑 없는 키워드
         "citations": json.loads(metric["details_json"])["citations"] if metric else None,
         "cost_usd": guardrails.month_cost_usd(conn),
         "budget_usd": config.MONTHLY_BUDGET_USD,
@@ -106,6 +108,10 @@ def llm_decide(phase: dict, data: dict, policy: dict) -> dict:
 {json.dumps(data, ensure_ascii=False, indent=1, default=str)}
 
 현재 정책: {json.dumps(policy, ensure_ascii=False)}
+
+특별 규칙: competitor_watch.stale_opportunities(브리핑은 뜨는데 출처가 낡은 쿼리)가 있으면
+내일 힌트에 최우선 반영하라 — 신선한 글로 인용을 가져올 확률이 가장 높은 표적이다.
+no_briefing_keywords는 인용 기회가 없는 키워드이므로 유사 주제 회피를 권고하라.
 
 JSON만 출력:
 {{"rationale": "오늘 데이터에서 읽은 것과 결정 이유 (2~4문장)",

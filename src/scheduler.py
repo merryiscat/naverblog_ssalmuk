@@ -22,7 +22,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
-from src import config, db, metrics, notify, publisher, steering, topics, writer
+from src import competitors, config, db, metrics, notify, publisher, steering, topics, writer
 from src.guardrails import GuardrailViolation
 
 PUBLISH_WINDOW = (11, 21)  # 발행 예약 창 (시)
@@ -105,6 +105,18 @@ def job_steering():
     print(f"[{datetime.now():%H:%M}] 보정·리포트 완료")
 
 
+def job_competitors():
+    """C6 — 경쟁·공백 관찰 (주 2회). 공백 발견 시 텔레그램에도 요약."""
+    result = competitors.observe()
+    if result["opportunities"]:
+        lines = [f"🎯 인용 공백 발견 — 스나이핑 후보 {len(result['opportunities'])}건"]
+        for o in result["opportunities"]:
+            lines.append(f"· {o['keyword']} (최신 출처 {o['freshest_days']}일 전)")
+        notify.send("\n".join(lines))
+    print(f"[{datetime.now():%H:%M}] 경쟁 관찰: {result['observed']}개 키워드, "
+          f"공백 {len(result['opportunities'])}건")
+
+
 def job_session_check():
     """세션 수명 점검 — 만료 7일 전부터 매일 경고."""
     if not config.SESSION_PATH.exists():
@@ -135,6 +147,10 @@ def build(scheduler: BlockingScheduler) -> BlockingScheduler:
                       CronTrigger(hour=22, minute=30, jitter=1200), id="steering")
     scheduler.add_job(_safe("세션점검", job_session_check),
                       CronTrigger(hour=9, minute=0), id="session-check")
+    # 주간 루프 (loop-design): 경쟁·공백 관찰 주 2회 — 발행 창과 겹치지 않는 오후 3시대
+    scheduler.add_job(_safe("경쟁관찰", job_competitors),
+                      CronTrigger(day_of_week="tue,fri", hour=15, minute=0, jitter=1800),
+                      id="competitors")
     return scheduler
 
 

@@ -1,5 +1,7 @@
 # 작업 기록 (append-only)
 
+## [2026-08-17] C6 v1 가동 | 경쟁·공백 관찰 — 브리핑 출처 수집→구조 파싱→공백 판정(출처 21일+ 낡음=스나이핑 후보), 주 2회(화·금 15시) 스케줄 등록, C5 입력에 competitor_watch 연결(공백 최우선 지침). 첫 실행 발견: **압축 키워드("넷플릭스주간순위")로는 브리핑이 안 뜨고 자연어("넷플릭스 이번주 순위")로는 뜸** — 브리핑은 자연어 질의 반응. 개선 과제: 관찰·측정(ai_cited) 쿼리를 자연어 변형으로 생성 (C1 키워드는 검색광고 압축형이라 표현 격차 존재)
+
 ## [2026-08-17] 🚀 가동 | 미니PC(kei-ubuntu-server) 배포 완료 — 공개키 등록→tar 전송(4.9MB, .env·세션 포함)→uv·chromium·시스템deps 71개→서버 검증 5/5→systemd active (Memory 59MB/상한 1.1G, 부팅 자동시작). 오늘 21:30 측정부터 서버가 이어받고 내일 04시 첫 완전 자동 사이클. 단일 운영 원칙 명문화(개발 PC에서 발행 계열 실행 금지 — 이중 발행 방지). SSH 자격은 .env, 이후 키 인증
 
 ## [2026-08-17] 배포 대상 실체 확인 | 미니PC = kei-ubuntu-server (Ubuntu 24.04, N100/4GB, Odin·tokbiseo 동거) — Windows 가정 폐기, install_task.ps1 대신 systemd 유닛(deploy/naverblog.service, Nice=10·MemoryMax=1.2G로 동거 서비스 보호) + deploy.md 절차 작성. SSH는 이 PC에서 kei/minhy 계정 공개키 거부 — 계정명 확인 대기

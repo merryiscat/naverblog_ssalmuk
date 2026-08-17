@@ -53,6 +53,11 @@ run_topics / scheduler를 직접 실행하지 않는다 — 서버와 이중 발
 
 - 세션 갱신(30일 주기): 위저드 재로그인은 **개발 PC(화면 있는 곳)** 에서 하고
   `data/session/storage_state.json`만 서버로 다시 scp 한다. 만료 7일 전 텔레그램 소환이 온다.
-- 코드 업데이트: 개발 PC에서 수정·커밋 후 scp(또는 서버에 git 원격 추가) → `systemctl restart naverblog`
+- 코드 업데이트 (개발 PC에서 — **data/·.env는 절대 덮어쓰지 않는다, 서버가 운영 상태의 단일 출처**):
+  ```bash
+  tar czf - --exclude=.venv --exclude=data --exclude=.env --exclude=.playwright-mcp --exclude='__pycache__' . \
+    | ssh merryiscat@192.168.50.205 "tar xzf - -C ~/naverblog_ssalmuk && cd ~/naverblog_ssalmuk && ~/.local/bin/uv sync -q"
+  ssh merryiscat@192.168.50.205 "echo 'PW' | sudo -S systemctl restart naverblog"
+  ```
 - 중지: `sudo systemctl stop naverblog` (가드레일과 별개로 사람의 최종 스위치)
 - Windows용 install_task.ps1은 대상이 Ubuntu로 확정되며 폐기 예정 (scripts/에 잔존)
