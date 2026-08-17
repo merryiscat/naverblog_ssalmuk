@@ -1,0 +1,22 @@
+# naverblog_ssalmuk 파이프라인 상주 서비스 (Ubuntu systemd)
+# 설치 위치: /etc/systemd/system/naverblog.service (docs/deploy.md 절차 참조)
+[Unit]
+Description=naverblog_ssalmuk pipeline scheduler
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# ★ 사용자·경로는 서버 계정에 맞게 수정
+User=CHANGEME
+WorkingDirectory=/home/CHANGEME/naverblog_ssalmuk
+Environment=TZ=Asia/Seoul
+ExecStart=/home/CHANGEME/.local/bin/uv run python -m src.scheduler
+Restart=always
+RestartSec=30
+# 동거 서비스(Odin 트레이딩 봇) 보호 — 브라우저 작업이 CPU·RAM을 독점하지 않게
+Nice=10
+MemoryMax=1200M
+
+[Install]
+WantedBy=multi-user.target
