@@ -171,9 +171,10 @@ def generate(topic: dict, conn: sqlite3.Connection | None = None) -> dict:
         body_path.write_text(f"# {title}\n\n{body}", encoding="utf-8")
 
         cur = conn.execute(
-            "INSERT INTO posts (topic_id, title, body_path, gate_json, status) "
-            "VALUES (?, ?, ?, ?, 'gated')",
-            (topic.get("id"), title, str(body_path), json.dumps(gate, ensure_ascii=False)),
+            "INSERT INTO posts (topic_id, title, body_path, gate_json, sources_json, status) "
+            "VALUES (?, ?, ?, ?, ?, 'gated')",
+            (topic.get("id"), title, str(body_path), json.dumps(gate, ensure_ascii=False),
+             json.dumps(research, ensure_ascii=False)),
         )
         conn.commit()
         return {"status": "gated", "post_id": cur.lastrowid, "title": title,

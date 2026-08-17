@@ -125,3 +125,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
         # 메이트 10개 분야 태그 (여행/푸드/레시피/스타일/테크/라이프/컬쳐/미디어/인사이트/취미)
         conn.execute("ALTER TABLE topics ADD COLUMN category TEXT")
         conn.commit()
+    post_cols = {r["name"] for r in conn.execute("PRAGMA table_info(posts)")}
+    if "sources_json" not in post_cols:
+        # 리서치 출처 목록 — 발행 시 '참고 자료' 절 생성에 필요 (원문 링크 명시는 공식 원칙 3)
+        conn.execute("ALTER TABLE posts ADD COLUMN sources_json TEXT")
+        conn.commit()
