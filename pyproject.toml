@@ -10,3 +10,8 @@ dependencies = [
     "playwright>=1.62.0",
     "python-dotenv>=1.2.2",
 ]
+
+[dependency-groups]
+dev = [
+    "paramiko>=5.0.0",
+]
