@@ -134,7 +134,7 @@ def collect(conn: sqlite3.Connection | None = None) -> dict:
                     rank = check_rank(kw)
                     cited = check_ai_cited(page, kw)
                     conn.execute(
-                        "INSERT INTO rankings (post_id, date, keyword, rank, ai_cited) "
+                        "INSERT OR REPLACE INTO rankings (post_id, date, keyword, rank, ai_cited) "
                         "VALUES (?, ?, ?, ?, ?)",
                         (post["id"], today, kw, rank, 1 if cited.get("cited") else 0))
                     ranks.append({"keyword": kw, "rank": rank, **cited})

@@ -101,6 +101,8 @@ CREATE TABLE IF NOT EXISTS costs (
 
 CREATE INDEX IF NOT EXISTS idx_costs_ts ON costs(ts);
 CREATE INDEX IF NOT EXISTS idx_posts_published ON posts(published_at);
+-- 같은 날 같은 글의 측정은 한 행 (재실행 시 갱신) — C5 리포트 중복 방지
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rankings_daily ON rankings(date, post_id);
 """
 
 
