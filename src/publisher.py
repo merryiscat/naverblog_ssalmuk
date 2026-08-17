@@ -25,6 +25,14 @@ from src import config, db, guardrails
 
 ERROR_SHOT_DIR = config.DATA_DIR / "error_shots"
 
+# 분야 → 네이버 블로그 '주제' 매핑 (발행 팝업의 32개 주제 중 — 2026-08-17 실팝업 목록)
+# 글마다 주제를 지정하면 메이트 분야 자동 분류에 신호를 준다
+NAVER_SUBJECT_BY_FIELD = {
+    "미디어": "방송", "테크": "IT·컴퓨터", "인사이트": "비즈니스·경제",
+    "여행": "국내여행", "푸드": "맛집", "레시피": "요리·레시피",
+    "라이프": "일상·생각", "스타일": "패션·미용", "컬쳐": "공연·전시", "취미": "취미",
+}
+
 
 class PublishError(Exception):
     """발행 실패 — 메시지에 원인, 스크린샷 경로 포함 가능."""
@@ -135,6 +143,66 @@ def _verify_public(url: str) -> bool:
             browser.close()
 
 
+def _select_category_and_subject(page, category: str) -> None:
+    """발행 팝업에서 카테고리(분야명 동일 카테고리)와 주제를 지정한다.
+
+    카테고리가 없거나 UI가 어긋나면 조용히 기본값으로 발행한다 — 치명 요소가 아님.
+    """
+    # ① 카테고리: '카테고리' 라벨 다음의 드롭다운 버튼 열기 → 이름 일치 항목 클릭
+    try:
+        page.evaluate(
+            """(cat) => {
+                const all = [...document.querySelectorAll('button')];
+                // 발행 팝업 안 카테고리 드롭다운: 현재 카테고리명이 적힌 버튼
+                const dd = all.find(b => b.offsetParent !== null &&
+                    b.closest('[class*="publish"], [class*="option"]') &&
+                    b.textContent.trim().length < 20 &&
+                    !['발행','현재','예약','확인'].includes(b.textContent.trim()));
+                if (!dd) return 'no-dropdown';
+                dd.click();
+                return 'opened';
+            }""", category)
+        time.sleep(0.8)
+        page.evaluate(
+            """(cat) => {
+                const item = [...document.querySelectorAll('label, li, button, span')]
+                    .find(e => e.offsetParent !== null && e.textContent.trim() === cat);
+                if (item) item.click();
+            }""", category)
+        time.sleep(0.5)
+    except Exception:
+        pass
+
+    # ② 주제: '주제 선택 안 함 >' 링크 → 매핑된 주제 라벨 → 확인
+    subject = NAVER_SUBJECT_BY_FIELD.get(category)
+    if not subject:
+        return
+    try:
+        opened = page.evaluate(
+            """() => {
+                const link = [...document.querySelectorAll('a')].find(
+                    a => a.offsetParent !== null && a.closest('[class*="set_theme"]'));
+                if (!link) return 'no-link';
+                link.click();
+                return 'opened';
+            }""")
+        if opened != "opened":
+            return
+        time.sleep(0.8)
+        page.evaluate(
+            """(subj) => {
+                const label = [...document.querySelectorAll('label')]
+                    .find(l => l.offsetParent !== null && l.textContent.trim() === subj);
+                if (label) label.click();
+                const ok = [...document.querySelectorAll('button')].find(
+                    b => b.offsetParent !== null && b.textContent.trim() === '확인');
+                if (ok) ok.click();
+            }""", subject)
+        time.sleep(0.5)
+    except Exception:
+        pass
+
+
 def publish(post_id: int, conn: sqlite3.Connection | None = None, *,
             headless: bool = True, tags: list[str] | None = None) -> dict:
     """posts 테이블의 gated 글 하나를 발행한다.
@@ -148,10 +216,13 @@ def publish(post_id: int, conn: sqlite3.Connection | None = None, *,
         # 가드레일 ①: 일 발행 상한 — 코드가 강제
         guardrails.check_daily_publish_limit(conn)
 
-        row = conn.execute("SELECT * FROM posts WHERE id = ?", (post_id,)).fetchone()
+        row = conn.execute(
+            "SELECT p.*, t.category FROM posts p LEFT JOIN topics t ON p.topic_id = t.id "
+            "WHERE p.id = ?", (post_id,)).fetchone()
         if not row or row["status"] != "gated":
             raise PublishError(f"발행 대상 아님: post {post_id} (status={row['status'] if row else '없음'})")
         title = row["title"]
+        category = row["category"]  # 분야명 = 카테고리명 (없으면 기본 카테고리로 발행)
         body_md = Path(row["body_path"]).read_text(encoding="utf-8")
         # 파일 첫 줄의 '# 제목'은 에디터 제목과 중복되므로 제거
         body_md = re.sub(r"^# .+\n+", "", body_md)
@@ -220,6 +291,11 @@ def publish(post_id: int, conn: sqlite3.Connection | None = None, *,
                     page.evaluate("() => document.querySelector('input[name=open_type]').click()")
                 if state["search"] is False:
                     raise PublishError("검색허용이 꺼져 있음 — 확인 필요 (소환)")
+
+                # 카테고리 선택 — 분야명과 같은 카테고리가 있으면 지정 (없으면 기본 유지)
+                # 주제 지정 — 분야→네이버 주제 매핑 (실패해도 발행은 진행)
+                if category:
+                    _select_category_and_subject(page, category)
 
                 # 태그 입력 (선택)
                 for tag in (tags or [])[:5]:
