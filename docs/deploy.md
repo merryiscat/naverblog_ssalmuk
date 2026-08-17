@@ -32,6 +32,7 @@ uv run python scripts/verify_keys.py
 uv run python -m src.scheduler --dry
 
 # 5. systemd 등록 (deploy/naverblog.service의 CHANGEME를 계정명으로 바꾼 뒤)
+sed -i 's/\r$//' deploy/naverblog.service   # Windows에서 scp된 CRLF 제거 (안 하면 유닛 파싱 실패)
 sudo cp deploy/naverblog.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now naverblog
