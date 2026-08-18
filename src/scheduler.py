@@ -9,6 +9,7 @@
   09:00       세션 수명 점검 — 만료 7일 전부터 텔레그램 경고
   화·금 15:00  경쟁·공백 관찰 (C6)
   일 16:00    메이트 관찰 에이전트 (C7)
+  화·목·토 23:15  블로그 검수 에이전트 (실화면 비전 검수 + 복기)
 
 모든 작업은 실패해도 스케줄러가 죽지 않는다 — 예외는 텔레그램으로 알리고 다음 주기를 기다린다.
 실행: uv run python -m src.scheduler  (--dry: 스케줄만 출력하고 종료)
@@ -24,7 +25,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
-from src import competitors, config, db, mate_observer, metrics, notify, publisher, steering, topics, writer
+from src import competitors, config, db, inspector, mate_observer, metrics, notify, publisher, steering, topics, writer
 from src.guardrails import GuardrailViolation
 
 PUBLISH_WINDOW = (11, 21)  # 발행 예약 창 (시)
@@ -129,6 +130,23 @@ def job_mate_observer():
           f"힌트 {len(hints)}건")
 
 
+def job_inspector():
+    """블로그 검수 에이전트 (주 3회). 심각·반복 지적은 텔레그램으로."""
+    result = inspector.inspect()
+    report = result["report"] or {}
+    urgent = [i for i in report.get("issues", []) if i.get("severity") in ("high", "mid")]
+    persisting = report.get("persisting", [])
+    if urgent or persisting:
+        lines = ["🔍 블로그 검수 보고"]
+        for i in urgent[:5]:
+            lines.append(f"[{i.get('severity')}] {i.get('where')}: {i.get('what')}")
+        if persisting:
+            lines.append("♻️ 반복 지적: " + "; ".join(persisting[:3]))
+        notify.send("\n".join(lines))
+    print(f"[{datetime.now():%H:%M}] 블로그 검수: 스크린샷 {result['shots']}장, "
+          f"지적 {len(report.get('issues', []))}건 (반복 {len(persisting)}건)")
+
+
 def job_session_check():
     """세션 수명 점검 — 만료 7일 전부터 매일 경고."""
     if not config.SESSION_PATH.exists():
@@ -167,6 +185,11 @@ def build(scheduler: BlockingScheduler) -> BlockingScheduler:
     scheduler.add_job(_safe("메이트관찰", job_mate_observer),
                       CronTrigger(day_of_week="sun", hour=16, minute=0, jitter=1800),
                       id="mate-observer")
+    # 블로그 검수 에이전트 주 3회 (사용자 확정 화·목·토) — 당일 발행분이 다 올라온 심야,
+    # C4(21:30)·C5(22:30)와 무충돌. 결과는 다음날 보정 입력으로
+    scheduler.add_job(_safe("블로그검수", job_inspector),
+                      CronTrigger(day_of_week="tue,thu,sat", hour=23, minute=15, jitter=900),
+                      id="inspector")
     return scheduler
 
 

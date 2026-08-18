@@ -9,6 +9,7 @@
   policy      — 현재 방향(주제 풀·템플릿 등) 스냅샷, 최신 행이 유효 (C5)
   competitors — AI 브리핑에 인용된 경쟁 글 관찰 (C6)
   mate_watch  — 메이트 관찰 에이전트의 주간 조사 보고 (C7)
+  inspections — 블로그 검수 에이전트의 화면 검수 보고 (주 3회, 복기 추적 포함)
   costs       — 모든 LLM·이미지 호출 비용 원장 (가드레일 ②의 근거 데이터)
 """
 
@@ -94,6 +95,14 @@ CREATE TABLE IF NOT EXISTS mate_watch (
     date        TEXT NOT NULL,
     report_json TEXT NOT NULL,              -- 에이전트 최종 보고 (JSON — 소식·선정자 분석·정책 힌트)
     tool_calls  INTEGER,                    -- 이번 조사에 쓴 도구 호출 수
+    created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS inspections (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    date        TEXT NOT NULL,
+    report_json TEXT NOT NULL,              -- 검수 보고 (issues·resolved·persisting·positives)
+    shots       INTEGER,                    -- 검수에 쓴 스크린샷 수
     created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 

@@ -97,6 +97,34 @@ def chat_tools(model: str, messages: list, tools: list, *, purpose: str,
         conn.close()
 
 
+def chat_vision(model: str, prompt: str, images: list[bytes], *, purpose: str) -> str:
+    """이미지(스크린샷)를 보는 호출 — 블로그 검수 에이전트용.
+
+    images는 PNG 바이트 목록. 비용 적산·예산 검사는 chat()과 동일
+    (비전 입력 토큰은 usage.prompt_tokens에 합산되어 온다).
+    """
+    import base64
+
+    conn = db.connect()
+    try:
+        guardrails.check_monthly_budget(conn)
+        content = [{"type": "text", "text": prompt}]
+        for img in images:
+            content.append({"type": "image_url", "image_url": {
+                "url": "data:image/png;base64," + base64.b64encode(img).decode(),
+                "detail": "auto"}})
+        resp = _get_client().chat.completions.create(
+            model=model, messages=[{"role": "user", "content": content}])
+        tokens_in = resp.usage.prompt_tokens if resp.usage else 0
+        tokens_out = resp.usage.completion_tokens if resp.usage else 0
+        price_in, price_out = config.PRICES_PER_MTOK.get(model, (5.00, 30.00))
+        cost = (tokens_in * price_in + tokens_out * price_out) / 1_000_000
+        _record_cost(conn, "text", model, tokens_in, tokens_out, cost, purpose)
+        return resp.choices[0].message.content or ""
+    finally:
+        conn.close()
+
+
 def generate_image(prompt: str, *, purpose: str, size: str = "1024x1024") -> bytes:
     """이미지 생성 호출. 텍스트와 같은 예산 원장을 쓴다."""
     conn = db.connect()

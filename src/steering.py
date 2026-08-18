@@ -75,11 +75,13 @@ def gather_input(conn: sqlite3.Connection) -> dict:
         "SELECT keyword, rank, ai_cited FROM rankings WHERE date = ?", (today,))]
     metric = conn.execute("SELECT * FROM metrics WHERE date = ?", (today,)).fetchone()
     from src.competitors import recent_summary  # 순환 임포트 방지 (지연 임포트)
+    from src.inspector import recent_summary as inspect_summary
     from src.mate_observer import recent_summary as mate_summary
     return {
         "topics": topics, "posts": posts, "ranks": ranks,
         "competitor_watch": recent_summary(conn),  # 공백 기회·브리핑 없는 키워드
         "mate_watch": mate_summary(conn),  # 메이트 선정자 관찰 힌트 (C7, 주 1회 갱신)
+        "self_inspection": inspect_summary(conn),  # 블로그 화면 검수 지적 (주 3회 갱신)
         "citations": json.loads(metric["details_json"])["citations"] if metric else None,
         "cost_usd": guardrails.month_cost_usd(conn),
         "budget_usd": config.MONTHLY_BUDGET_USD,
@@ -116,6 +118,8 @@ def llm_decide(phase: dict, data: dict, policy: dict) -> dict:
 no_briefing_keywords는 인용 기회가 없는 키워드이므로 유사 주제 회피를 권고하라.
 mate_watch.policy_hints는 실제 메이트 선정자 블로그 분석에서 나온 것이다 —
 분야·주제·스타일 방향을 정할 때 참고하라 (confidence가 low면 가볍게만).
+self_inspection은 우리 블로그 실제 화면을 검수한 결과다 — persisting(반복 지적)이
+있으면 alerts로 사람에게 올리고, 글 생성으로 고칠 수 있는 것은 내일 힌트에 반영하라.
 
 JSON만 출력:
 {{"rationale": "오늘 데이터에서 읽은 것과 결정 이유 (2~4문장)",
