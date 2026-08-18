@@ -73,8 +73,10 @@ def gather_research(keyword: str) -> list[dict]:
     """검색 API(뉴스·웹문서·블로그)에서 사실 스니펫을 모은다.
 
     v1은 스니펫 수준 — 본문 전문 수집(정밀 리서치)은 측정 결과를 보고 보강한다.
+    순위류 등 공식 데이터가 있는 주제는 커넥터 소스가 맨 앞([1])에 붙는다.
     """
-    sources = []
+    from src.connectors import official_sources  # 지연 임포트 (순환 방지)
+    sources = official_sources(keyword)
     for kind, n in (("news", 6), ("webkr", 6), ("blog", 4)):
         try:
             for item in openapi_search(kind, keyword, display=n).get("items", []):
@@ -149,7 +151,8 @@ def write_draft(topic: dict, research: list[dict], feedback: str | None = None) 
 - ⚠낡음 표시(1년 이상 지난) 소스를 글의 중심 근거로 쓰지 않는다 — 배경 설명에만
   제한적으로 쓰되 그 시점을 명시하고, 최신 소스와 상충하면 최신 쪽을 따른다
 
-리서치 소스:
+리서치 소스 — (official) 표시는 공식 데이터다: 순위·수치는 반드시 이것을 기준으로 쓰고,
+다른 소스와 상충하면 official을 따른다:
 {src_block}
 
 {f'이전 초안의 게이트 불합격 피드백 — 반드시 고쳐라: {feedback}' if feedback else ''}

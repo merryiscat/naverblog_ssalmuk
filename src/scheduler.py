@@ -2,8 +2,8 @@
 
 하루 일과 (모든 시각에 지터 — 사람 같은 불규칙성):
   04:00±40분  주제 발굴 (C1)
-  08:30±60분  글 생성·게이트 (C2) → 통과 글마다 발행 시각을 11~21시 사이 랜덤 예약
-  (예약 시각)  발행 (C3) — 일 상한은 가드레일이 강제
+  08:30±60분  글 생성·게이트 (C2) → 통과 글마다 발행 시각을 11~21시 사이 랜덤 예약(DB)
+  11~21시 20분 간격  발행 폴러 — 예약 시각 지난 글 발행 (C3) — 일 상한은 가드레일이 강제
   21:30±30분  측정 (C4)
   22:30±20분  일일 보정 + 리포트 (C5)
   09:00       세션 수명 점검 — 만료 7일 전부터 텔레그램 경고
@@ -23,7 +23,6 @@ from datetime import datetime, timedelta
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.date import DateTrigger
 
 from src import competitors, config, db, inspector, mate_observer, metrics, notify, publisher, steering, topics, writer
 from src.guardrails import GuardrailViolation
@@ -52,8 +51,13 @@ def job_discover():
     print(f"[{datetime.now():%H:%M}] 주제 발굴: {len(result)}건")
 
 
-def job_generate(scheduler: BlockingScheduler):
-    """C2 — selected 주제로 글 생성, 통과 글은 발행 시각을 랜덤 예약."""
+def job_generate():
+    """C2 — selected 주제로 글 생성, 통과 글은 발행 시각을 DB에 예약.
+
+    예약을 메모리(DateTrigger)가 아니라 posts.scheduled_at에 남긴다 —
+    상주 프로세스가 재시작돼도 예약이 증발하지 않는다 (2026-08-19 버그 수정).
+    실제 발행은 job_publish_due 폴러가 집어간다.
+    """
     conn = db.connect()
     try:
         rows = conn.execute(
@@ -65,12 +69,35 @@ def job_generate(scheduler: BlockingScheduler):
             if result["status"] != "gated":
                 print(f"생성 스킵: {topic['keyword']} — {result.get('reason')}")
                 continue
-            post_id = result["post_id"]
-            scheduler.add_job(
-                _safe(f"발행({result['title'][:20]})", lambda pid=post_id: _publish(pid)),
-                DateTrigger(run_date=when), id=f"publish-{post_id}",
-                misfire_grace_time=3600)
-            print(f"발행 예약: [{post_id}] {result['title'][:30]} → {when:%H:%M}")
+            conn.execute("UPDATE posts SET scheduled_at = ? WHERE id = ?",
+                         (when.strftime("%Y-%m-%d %H:%M:%S"), result["post_id"]))
+            conn.commit()
+            print(f"발행 예약: [{result['post_id']}] {result['title'][:30]} → {when:%H:%M}")
+    finally:
+        conn.close()
+
+
+def job_publish_due():
+    """발행 폴러 — 예약 시각이 지난 gated 글을 발행한다 (발행 창에서 20분 간격).
+
+    24시간 넘게 밀린 예약(장애로 놓친 것)은 신선도가 의심되므로 발행하지 않고
+    스킵 처리 + 텔레그램 알림 — 낡은 글 발행 사고(2026-08-18)의 연장 방어선.
+    """
+    conn = db.connect()
+    try:
+        due = conn.execute(
+            "SELECT id, title, scheduled_at FROM posts WHERE status = 'gated' "
+            "AND scheduled_at IS NOT NULL "
+            "AND scheduled_at <= datetime('now', 'localtime') ORDER BY scheduled_at").fetchall()
+        for row in due:
+            overdue_h = (datetime.now()
+                         - datetime.fromisoformat(row["scheduled_at"])).total_seconds() / 3600
+            if overdue_h > 24:
+                conn.execute("UPDATE posts SET status = 'skipped' WHERE id = ?", (row["id"],))
+                conn.commit()
+                notify.send(f"⏭️ 예약 24시간 초과로 발행 취소 (신선도 보호): {row['title'][:40]}")
+                continue
+            _publish(row["id"])  # 가드레일(일 상한) 위반 시 예외 → _safe가 처리
     finally:
         conn.close()
 
@@ -169,8 +196,12 @@ def build(scheduler: BlockingScheduler) -> BlockingScheduler:
     """하루 일과 등록. jitter 단위는 초."""
     scheduler.add_job(_safe("주제발굴", job_discover),
                       CronTrigger(hour=4, minute=0, jitter=2400), id="discover")
-    scheduler.add_job(_safe("글생성", lambda: job_generate(scheduler)),
+    scheduler.add_job(_safe("글생성", job_generate),
                       CronTrigger(hour=8, minute=30, jitter=3600), id="generate")
+    # 발행 폴러 — 예약(DB) 시각이 지난 글을 집어 발행. 폴링이라 지터 불필요
+    # (발행 시각의 사람 같은 불규칙성은 scheduled_at 자체가 랜덤이라 이미 확보)
+    scheduler.add_job(_safe("발행폴러", job_publish_due),
+                      CronTrigger(hour="11-21", minute="*/20"), id="publish-due")
     scheduler.add_job(_safe("측정", job_metrics),
                       CronTrigger(hour=21, minute=30, jitter=1800), id="metrics")
     scheduler.add_job(_safe("보정", job_steering),

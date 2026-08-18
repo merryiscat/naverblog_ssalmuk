@@ -150,3 +150,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
         # 리서치 출처 목록 — 발행 시 '참고 자료' 절 생성에 필요 (원문 링크 명시는 공식 원칙 3)
         conn.execute("ALTER TABLE posts ADD COLUMN sources_json TEXT")
         conn.commit()
+    if "scheduled_at" not in post_cols:
+        # 발행 예약 시각 — 메모리(DateTrigger) 예약은 재시작 시 증발하는 버그가 있어
+        # DB 영속 큐로 전환 (2026-08-19). 발행 폴러가 이 시각이 지난 gated 글을 집는다
+        conn.execute("ALTER TABLE posts ADD COLUMN scheduled_at TEXT")
+        conn.commit()
