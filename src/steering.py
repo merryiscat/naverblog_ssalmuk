@@ -83,6 +83,7 @@ def gather_input(conn: sqlite3.Connection) -> dict:
         "mate_watch": mate_summary(conn),  # 메이트 선정자 관찰 힌트 (C7, 주 1회 갱신)
         "self_inspection": inspect_summary(conn),  # 블로그 화면 검수 지적 (주 3회 갱신)
         "citations": json.loads(metric["details_json"])["citations"] if metric else None,
+        "visitors": json.loads(metric["details_json"]).get("visitors") if metric else None,
         "cost_usd": guardrails.month_cost_usd(conn),
         "budget_usd": config.MONTHLY_BUDGET_USD,
         "published_total": conn.execute(
@@ -181,6 +182,10 @@ def compose_report(phase: dict, data: dict, decision: dict, applied: list[str]) 
         lines.append("오늘 발행 없음")
     c = data.get("citations") or {}
     lines += ["", f"인용수: 누적 {c.get('cumulative', '?')} / 당월 {c.get('this_month', '?')}"]
+    v = data.get("visitors") or {}
+    if v:
+        lines.append(f"방문자: 오늘 {v.get('today', '?')} / 누적 {v.get('total', '?')}"
+                     f" / 이웃 {v.get('subscribers', '?')}")
     for r in data["ranks"]:
         cited = "🎯인용" if r["ai_cited"] else "미인용"
         lines.append(f"· {r['keyword']}: 검색 {r['rank'] or '30+'}위, {cited}")

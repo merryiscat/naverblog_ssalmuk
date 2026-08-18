@@ -6,14 +6,17 @@
   ② 발행 글의 블로그 검색 순위 — 검색 API로 내 글 위치 확인 (스크래핑 아님)
   ③ 글별 ai_cited — 타깃 쿼리의 검색 페이지에서 AI 브리핑 존재 여부 +
      브리핑 출처에 내 블로그가 있는지 (초기 국면의 1차 신호)
+  ④ 방문자수 — 모바일 블로그 공개 API (오늘/누적/이웃수, 로그인·브라우저 불필요).
+     애드포스트 임계 판단 재료 (pending: 광고 도입 조건, 2026-08-18)
 
-②는 API라 부담 없고, ①③은 브라우저라 글 수만큼만 최소로 연다 (쿼리 예산).
+②④는 API라 부담 없고, ①③은 브라우저라 글 수만큼만 최소로 연다 (쿼리 예산).
 """
 
 import json
 import re
 import sqlite3
 import time
+import urllib.request
 from datetime import date
 
 from playwright.sync_api import sync_playwright
@@ -61,6 +64,27 @@ def collect_citations(page) -> dict:
             result[key] = m.group(1).strip()
             result[key + "_n"] = _parse_count(m.group(1))
     return result
+
+
+def collect_visitors() -> dict:
+    """모바일 블로그 공개 API에서 방문자수를 가져온다 (측정 실패는 비치명 — 빈 dict).
+
+    C4가 21:30±30분에 돌므로 dayVisitorCount ≈ 당일 방문자 거의 전체.
+    """
+    url = f"https://m.blog.naver.com/api/blogs/{config.NAVER_BLOG_ID}"
+    try:
+        # Referer 없으면 403 (2026-08-19 실측) — 모바일 블로그에서 온 요청처럼 보여야 응답
+        req = urllib.request.Request(url, headers={
+            "User-Agent": config.BROWSER_UA,
+            "Referer": f"https://m.blog.naver.com/{config.NAVER_BLOG_ID}"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.loads(r.read().decode("utf-8"))["result"]
+        return {"today": data.get("dayVisitorCount"),
+                "total": data.get("totalVisitorCount"),
+                "subscribers": data.get("subscriberCount")}
+    except Exception as e:
+        print(f"방문자수 수집 실패 (측정은 계속): {type(e).__name__}: {e}")
+        return {}
 
 
 def check_rank(keyword: str) -> int | None:
@@ -142,12 +166,15 @@ def collect(conn: sqlite3.Connection | None = None) -> dict:
             finally:
                 browser.close()
 
+        visitors = collect_visitors()
         conn.execute(
-            "INSERT OR REPLACE INTO metrics (date, citations, details_json) VALUES (?, ?, ?)",
-            (today, citations.get("cumulative_n"),
-             json.dumps({"citations": citations, "ranks": ranks}, ensure_ascii=False)))
+            "INSERT OR REPLACE INTO metrics (date, citations, visitors, details_json) "
+            "VALUES (?, ?, ?, ?)",
+            (today, citations.get("cumulative_n"), visitors.get("today"),
+             json.dumps({"citations": citations, "ranks": ranks, "visitors": visitors},
+                        ensure_ascii=False)))
         conn.commit()
-        return {"citations": citations, "ranks": ranks}
+        return {"citations": citations, "ranks": ranks, "visitors": visitors}
     finally:
         if own:
             conn.close()
