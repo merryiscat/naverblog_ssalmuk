@@ -213,6 +213,27 @@ JSON만 출력:
             "research_query": scores.get("research_query", "")}
 
 
+def make_hero_image(title: str, category: str, stem: str) -> str | None:
+    """대표 이미지 1장 생성·저장 — 실패해도 글 발행은 계속 (치명 요소 아님).
+
+    이미지 안에 글자를 넣지 않는다 — 생성 모델의 한글 렌더링이 불안정해
+    깨진 글자가 오히려 신뢰도를 깎는다 (검수 에이전트 지적 사항이기도 함).
+    """
+    style = ("차분한 파스텔 톤의 미니멀 플랫 일러스트, 블로그 대표 이미지. "
+             "글자·텍스트·숫자 절대 없음, 브랜드 로고·상표 절대 없음, "
+             "깔끔한 구성, 넉넉한 여백")
+    try:
+        img = llm.generate_image(f"{style}. 주제: {title} ({category} 분야)",
+                                 purpose="hero-image", size="1536x1024")
+        config.ensure_dirs()
+        path = config.IMAGES_DIR / f"{stem}.png"
+        path.write_bytes(img)
+        return str(path)
+    except Exception as e:
+        print(f"대표 이미지 생성 실패 (글은 이미지 없이 진행): {type(e).__name__}: {e}")
+        return None
+
+
 def generate(topic: dict, conn: sqlite3.Connection | None = None) -> dict:
     """주제 하나 → 리서치 → 초안 → 게이트 (재시도 포함) → posts 기록.
 
@@ -253,22 +274,25 @@ def generate(topic: dict, conn: sqlite3.Connection | None = None) -> dict:
             return {"status": "skipped", "reason": f"게이트 {attempts}회 불합격 (총점 {gate['total']})",
                     "gate": gate, "attempts": attempts, "re_researched": re_researched}
 
-        # 합격 — 본문 파일 저장 + posts 기록 (발행은 C3의 일)
+        # 합격 — 본문 파일 저장 + 대표 이미지 + posts 기록 (발행은 C3의 일)
         config.ensure_dirs()
         safe_kw = re.sub(r"[^\w가-힣]", "_", topic["keyword"])
         body_path = config.POSTS_DIR / f"{today}-{safe_kw}.md"
         body_path.write_text(f"# {title}\n\n{body}", encoding="utf-8")
+        hero = make_hero_image(title, topic.get("category", "일반"), f"{today}-{safe_kw}")
 
         cur = conn.execute(
-            "INSERT INTO posts (topic_id, title, body_path, gate_json, sources_json, status) "
-            "VALUES (?, ?, ?, ?, ?, 'gated')",
-            (topic.get("id"), title, str(body_path), json.dumps(gate, ensure_ascii=False),
+            "INSERT INTO posts (topic_id, title, body_path, images_json, gate_json, "
+            "sources_json, status) VALUES (?, ?, ?, ?, ?, ?, 'gated')",
+            (topic.get("id"), title, str(body_path),
+             json.dumps([hero] if hero else []),
+             json.dumps(gate, ensure_ascii=False),
              json.dumps(research, ensure_ascii=False)),
         )
         conn.commit()
         return {"status": "gated", "post_id": cur.lastrowid, "title": title,
-                "body_path": str(body_path), "gate": gate, "attempts": attempts,
-                "re_researched": re_researched}
+                "body_path": str(body_path), "image": hero, "gate": gate,
+                "attempts": attempts, "re_researched": re_researched}
     finally:
         if own:
             conn.close()

@@ -127,6 +127,28 @@ def _paste_html(page, html: str) -> None:
         raise PublishError(f"본문 주입 실패: input_buffer iframe 없음 ({ok}) — 에디터 개편 의심")
 
 
+def _attach_images(page, image_paths: list[str]) -> int:
+    """툴바 '사진' 버튼 → 파일 선택으로 이미지 삽입 (정찰 2026-08-19: file chooser 방식 실검증).
+
+    커서 위치에 들어가므로 제목 입력 직후에 부르면 본문 최상단 = 대표 이미지(썸네일)가 된다.
+    실패해도 발행은 계속한다 — 이미지는 치명 요소가 아님.
+    """
+    done = 0
+    for path in image_paths:
+        if not Path(path).exists():
+            continue
+        try:
+            with page.expect_file_chooser(timeout=8000) as fc:
+                page.locator('button[data-name="image"].se-image-toolbar-button').click()
+            fc.value.set_files(path)
+            time.sleep(6)  # 업로드 완료 대기
+            done += 1
+        except Exception as e:
+            print(f"이미지 첨부 실패 (계속 진행): {type(e).__name__}: {e}")
+            break
+    return done
+
+
 def _verify_public(url: str) -> bool:
     """비로그인 새 컨텍스트로 공개 URL을 열어 실게시 확인 (가짜 성공 방지)."""
     with sync_playwright() as p:
@@ -227,6 +249,7 @@ def publish(post_id: int, conn: sqlite3.Connection | None = None, *,
         # 파일 첫 줄의 '# 제목'은 에디터 제목과 중복되므로 제거
         body_md = re.sub(r"^# .+\n+", "", body_md)
         sources = json.loads(row["sources_json"]) if row["sources_json"] else []
+        images = json.loads(row["images_json"]) if row["images_json"] else []
         html = md_to_html(build_final_body(body_md, sources))
 
         with sync_playwright() as p:
@@ -248,6 +271,11 @@ def publish(post_id: int, conn: sqlite3.Connection | None = None, *,
                 page.locator(".se-component.se-documentTitle").click()
                 time.sleep(0.5)
                 page.keyboard.type(title, delay=30)
+
+                # 대표 이미지 — 제목 직후 = 본문 최상단, 첫 이미지가 썸네일이 된다
+                if images:
+                    attached = _attach_images(page, images)
+                    print(f"이미지 첨부: {attached}/{len(images)}장")
 
                 # 본문 — 본문 영역 클릭 후 HTML 주입
                 page.locator(".se-component.se-text").last.click()

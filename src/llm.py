@@ -131,13 +131,14 @@ def generate_image(prompt: str, *, purpose: str, size: str = "1024x1024") -> byt
     try:
         guardrails.check_monthly_budget(conn)
 
-        resp = _get_client().images.generate(prompt=prompt, size=size)
+        resp = _get_client().images.generate(
+            model=config.MODEL_IMAGE, prompt=prompt, size=size)
         import base64
 
         image_bytes = base64.b64decode(resp.data[0].b64_json)
 
         # 이미지 단가는 추정치(config.IMAGE_COST_USD)로 적산 — 구현 시 보정 예정
-        _record_cost(conn, "image", "image-gen", 0, 0, config.IMAGE_COST_USD, purpose)
+        _record_cost(conn, "image", config.MODEL_IMAGE, 0, 0, config.IMAGE_COST_USD, purpose)
         return image_bytes
     finally:
         conn.close()
