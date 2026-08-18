@@ -14,7 +14,8 @@
 ## 배포 절차 (서버에서 실행)
 
 ```bash
-# 1. 프로젝트 전송 — 개발 PC에서 (repo에 원격이 없으므로 scp. .venv 제외)
+# 1. 프로젝트 전송 — 개발 PC에서 scp/tar (GitHub 원격은 있으나 .env·세션은
+#    git에 없으므로 서버가 pull하는 방식 대신 파일 전송을 유지. .venv 제외)
 #    (Windows 개발 PC에서) scp로 통째 전송:
 #    scp -r C:\Users\minhy\project\naverblog_ssalmuk <user>@192.168.50.205:~/
 #    ※ .env 와 data/session/storage_state.json 포함돼야 함 (git에는 없음)
