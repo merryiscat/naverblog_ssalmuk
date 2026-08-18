@@ -3,22 +3,35 @@
 템플릿·채점 기준의 근거는 docs/mate-analysis.md "C2 글 템플릿·품질 게이트 사양":
   템플릿 7요소 — ①첫 문단 즉답 ②H2/H3 위계 ③고정 스키마 표 ④통계·수치+출처
                  ⑤FAQ 절 ⑥기간·집계 기준 명시 ⑦발행일 명시
-  게이트 6차원 — 사실성 / 구조 / 去AI味 / 키워드 스터핑 감점 / 두괄식 / 구체성
+  게이트 7차원 — 사실성 / 구조 / 去AI味 / 키워드 스터핑 감점 / 두괄식 / 구체성 / 신선도
 
-흐름: 리서치(검색 API 스니펫) → 초안(gpt-4.1) → 게이트(gpt-5.4-mini 채점)
-      → 불합격이면 피드백을 넣어 재생성 (최대 GATE_MAX_RETRIES회) → 실패 시 스킵.
+흐름(왕복 루프): 리서치(검색 API 스니펫) → 초안(gpt-4.1) → 게이트(gpt-5.4-mini 채점)
+  → 게이트가 action을 지시한다:
+    rewrite     — 피드백을 넣어 재작성 (기존 재생성과 동일)
+    re_research — 소스 자체가 낡거나 부족 → 게이트가 준 보완 검색어로 재리서치 후 재작성
+  → 최대 GATE_MAX_RETRIES회 재시도, 실패 시 스킵.
+
+신선도는 사실성과 같은 단독 커트라인이다 — 2026-08-18 "2024년 기준" 글 2건이
+사실성 게이트를 통과해 발행된 사고의 재발 방지 장치 (docs/status.md 신선도 버그).
 """
 
 import json
 import re
 import sqlite3
-from datetime import date
+from datetime import date, datetime
+from email.utils import parsedate_to_datetime
 
 from src import config, db, llm
 from src.naver_api import openapi_search
 
 # 게이트 합격선 (100점 만점). 낮추는 것은 사람만 할 수 있다 (가드레일 ④의 연장)
 GATE_PASS_SCORE = 70
+# 신선도 단독 커트라인 — 평균이 높아도 낡은 정보 중심이면 불합격
+FRESHNESS_PASS_SCORE = 60
+# 이 나이(일)를 넘은 소스는 프롬프트에 '낡음'으로 표시해 중심 근거 사용을 막는다
+STALE_DAYS = 365
+# 왕복 루프에서 재리서치 최대 횟수 (LLM이 무한 재리서치를 지시하지 못하게)
+RE_RESEARCH_MAX = 1
 
 # 去AI味 — 네이버 블로그에서 'AI 티'로 읽히는 상투 표현들 (게이트가 감점)
 AI_CLICHES = ["결론적으로", "종합해보면", "~하는 것이 중요합니다", "알아보도록 하겠습니다",
@@ -30,6 +43,32 @@ def _strip_tags(s: str) -> str:
     return re.sub(r"<[^>]+>", "", s).replace("&quot;", '"').replace("&amp;", "&")
 
 
+def _age_days(date_str: str) -> int | None:
+    """소스 날짜 문자열 → 나이(일). 뉴스는 RFC822, 블로그는 YYYYMMDD. 실패·없음은 None."""
+    s = (date_str or "").strip()
+    if not s:
+        return None
+    try:
+        if re.fullmatch(r"\d{8}", s):  # 블로그 postdate
+            d = datetime.strptime(s, "%Y%m%d")
+        else:  # 뉴스 pubDate — 로케일 무관 파서 사용
+            d = parsedate_to_datetime(s).replace(tzinfo=None)
+        return max((datetime.now() - d).days, 0)
+    except (ValueError, TypeError):
+        return None
+
+
+def _age_label(age: int | None) -> str:
+    """프롬프트에 넣을 나이 표기 — 낡은 소스는 눈에 띄게 경고를 단다."""
+    if age is None:
+        return "날짜 미상"
+    if age <= 60:
+        return f"{age}일 전"
+    if age <= STALE_DAYS:
+        return f"약 {age // 30}개월 전"
+    return f"약 {age // 365}년 전 ⚠낡음"
+
+
 def gather_research(keyword: str) -> list[dict]:
     """검색 API(뉴스·웹문서·블로그)에서 사실 스니펫을 모은다.
 
@@ -39,30 +78,51 @@ def gather_research(keyword: str) -> list[dict]:
     for kind, n in (("news", 6), ("webkr", 6), ("blog", 4)):
         try:
             for item in openapi_search(kind, keyword, display=n).get("items", []):
+                date_str = item.get("pubDate", item.get("postdate", ""))
                 sources.append({
                     "kind": kind,
                     "title": _strip_tags(item.get("title", "")),
                     "snippet": _strip_tags(item.get("description", "")),
                     "url": item.get("link", ""),
-                    "date": item.get("pubDate", item.get("postdate", "")),
+                    "date": date_str,
+                    "age_days": _age_days(date_str),
                 })
         except Exception:
             continue  # 한 소스가 죽어도 나머지로 진행
     return sources
 
 
-def write_draft(topic: dict, research: list[dict], feedback: str | None = None) -> str:
-    """초안 작성 — 작문 모델(gpt-4.1)에 템플릿 7요소를 강제한다."""
-    src_block = "\n".join(
-        f"[{i+1}] ({s['kind']}) {s['title']} — {s['snippet']} ({s['url']})"
+def merge_research(base: list[dict], extra: list[dict], cap: int = 16) -> list[dict]:
+    """재리서치 결과를 기존 소스와 합친다 — URL 중복 제거, 최신 우선, cap개 제한."""
+    seen, merged = set(), []
+    for s in sorted(base + extra, key=lambda s: s["age_days"] if s["age_days"] is not None else 9999):
+        if s["url"] and s["url"] in seen:
+            continue
+        seen.add(s["url"])
+        merged.append(s)
+    return merged[:cap]
+
+
+def _src_block(research: list[dict], with_url: bool = True) -> str:
+    """프롬프트용 소스 목록 — 날짜·낡음 경고를 항상 함께 보여준다."""
+    return "\n".join(
+        f"[{i+1}] ({s['kind']}, {_age_label(s.get('age_days'))}) {s['title']} — {s['snippet']}"
+        + (f" ({s['url']})" if with_url else "")
         for i, s in enumerate(research)
     )
+
+
+def write_draft(topic: dict, research: list[dict], feedback: str | None = None) -> str:
+    """초안 작성 — 작문 모델(gpt-4.1)에 템플릿 7요소를 강제한다."""
+    src_block = _src_block(research)
     # 분야별 조정 (mate-analysis: 테크·인사이트=통계·출처↑, 라이프·푸드·여행=가독성↑)
     tone = ("통계·수치와 출처 인용의 밀도를 높여라"
             if topic.get("category") in ("테크", "인사이트", "미디어")
             else "쉬운 설명과 읽기 편한 흐름을 우선하되 수치는 정확히 써라")
 
+    today = date.today()
     prompt = f"""네이버 블로그에 올릴 정보 정리·분석형 글을 작성하라. 주제: "{topic['keyword']}" (분야: {topic.get('category', '일반')})
+오늘 날짜: {today:%Y-%m-%d}
 
 목표: 네이버 AI 브리핑이 인용하기 좋은 글. 아래 9요소를 반드시 지켜라
 (1~7은 GEO 실증, 8~9는 네이버 공식 셀프 체크 가이드 반영):
@@ -71,7 +131,8 @@ def write_draft(topic: dict, research: list[dict], feedback: str | None = None) 
 3. 핵심 정보를 정리한 표 최소 1개 (동일 스키마, 마크다운 표)
 4. 통계·수치를 쓸 때마다 아래 리서치 소스 번호로 출처 표기 — 예: (출처: [3])
 5. 마지막에 FAQ 절 (## 자주 묻는 질문, Q 3개 이상)
-6. 정보의 기준 시점을 명시한다 ("2026년 8월 기준")
+6. 정보의 기준 시점은 오늘 날짜 기준으로 명시한다 ("{today.year}년 {today.month}월 기준") —
+   제목·본문에 과거 연도를 기준 시점으로 달지 않는다 ("2024년 기준" 금지)
 7. {tone}
 8. 첫 문단 직후에 이 글이 누구에게, 어떤 상황에서 유용한지 한두 문장으로 밝힌다 (TPO)
 9. 상황별 추천 절을 넣는다 — "~한 경우엔 A, ~한 경우엔 B"처럼 독자 상황에 따라
@@ -85,6 +146,8 @@ def write_draft(topic: dict, research: list[dict], feedback: str | None = None) 
 - 리서치 소스의 문장을 그대로 복사하지 않는다 — 반드시 내 문장으로 재구성
   (기계적 변형 게시는 네이버 공식 '스크래핑' 스팸 유형)
 - 제목과 본문 내용이 어긋나는 낚시성 제목 금지
+- ⚠낡음 표시(1년 이상 지난) 소스를 글의 중심 근거로 쓰지 않는다 — 배경 설명에만
+  제한적으로 쓰되 그 시점을 명시하고, 최신 소스와 상충하면 최신 쪽을 따른다
 
 리서치 소스:
 {src_block}
@@ -96,9 +159,14 @@ def write_draft(topic: dict, research: list[dict], feedback: str | None = None) 
 
 
 def gate_draft(draft: str, topic: dict, research: list[dict]) -> dict:
-    """품질 게이트 — 판단 모델이 6차원 채점. 반환: {scores, total, passed, feedback}."""
-    src_block = "\n".join(f"[{i+1}] {s['title']} — {s['snippet']}" for i, s in enumerate(research))
-    prompt = f"""다음 블로그 초안을 채점하라. 주제: "{topic['keyword']}"
+    """품질 게이트 — 판단 모델이 7차원 채점 + 다음 행동 지시.
+
+    반환: {scores, total, passed, feedback, action, research_query}
+      action: "pass" | "rewrite"(재작성으로 고칠 수 있음) | "re_research"(소스가 낡거나 부족)
+    """
+    today = date.today()
+    src_block = _src_block(research, with_url=False)
+    prompt = f"""다음 블로그 초안을 채점하라. 주제: "{topic['keyword']}" / 오늘 날짜: {today:%Y-%m-%d}
 
 채점 기준 (각 0~100):
 - factual: 본문의 사실·수치가 리서치 소스와 부합하나? 소스에 없는 주장에는 감점
@@ -109,6 +177,15 @@ def gate_draft(draft: str, topic: dict, research: list[dict]) -> dict:
 - stuffing: 키워드 기계 반복이 없고, 제목이 본문 내용과 일치하나 (낚시성 감점)
 - frontload: 첫 문단이 검색 의도에 즉답하나
 - specificity: 모호한 서술 대신 구체 수치·근거가 있나
+- freshness: 오늘({today:%Y-%m-%d}) 발행하기에 정보가 현재적인가?
+  제목·기준 시점에 과거 연도가 달려 있거나("2024년 기준" 등), 중심 근거가
+  ⚠낡음 소스에 의존하거나, 낡은 정보를 최신인 것처럼 서술하면 크게 감점
+
+다음 행동도 지시하라:
+- 합격 수준이면 action: "pass"
+- 초안만 고치면 되면 action: "rewrite"
+- 소스 자체가 낡았거나 핵심 정보가 소스에 없어 재작성으로 해결이 안 되면
+  action: "re_research" + research_query에 보완 검색어 (예: "{topic['keyword']} {today.year}")
 
 리서치 소스:
 {src_block}
@@ -118,16 +195,22 @@ def gate_draft(draft: str, topic: dict, research: list[dict]) -> dict:
 
 JSON만 출력:
 {{"factual": 0, "structure": 0, "deai": 0, "stuffing": 0, "frontload": 0, "specificity": 0,
+ "freshness": 0, "action": "pass|rewrite|re_research", "research_query": "",
  "feedback": "불합격 원인과 고칠 점을 구체적으로 (합격이어도 개선점 한 줄)"}}"""
     raw = llm.chat(config.MODEL_JUDGE, prompt, purpose="quality-gate")
     raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     scores = json.loads(raw)
-    dims = ["factual", "structure", "deai", "stuffing", "frontload", "specificity"]
+    dims = ["factual", "structure", "deai", "stuffing", "frontload", "specificity", "freshness"]
     total = sum(float(scores.get(d, 0)) for d in dims) / len(dims)
-    # 사실성은 단독 커트라인 — 평균이 높아도 사실성이 낮으면 불합격 (허위 정보 방지)
-    passed = total >= GATE_PASS_SCORE and float(scores.get("factual", 0)) >= 60
+    # 사실성·신선도는 단독 커트라인 — 평균이 높아도 이 둘이 낮으면 불합격
+    # (사실성: 허위 정보 방지 / 신선도: "2024년 기준" 발행 사고 재발 방지)
+    passed = (total >= GATE_PASS_SCORE
+              and float(scores.get("factual", 0)) >= 60
+              and float(scores.get("freshness", 0)) >= FRESHNESS_PASS_SCORE)
     return {"scores": scores, "total": round(total, 1), "passed": passed,
-            "feedback": scores.get("feedback", "")}
+            "feedback": scores.get("feedback", ""),
+            "action": "pass" if passed else (scores.get("action") or "rewrite"),
+            "research_query": scores.get("research_query", "")}
 
 
 def generate(topic: dict, conn: sqlite3.Connection | None = None) -> dict:
@@ -144,13 +227,19 @@ def generate(topic: dict, conn: sqlite3.Connection | None = None) -> dict:
             return {"status": "skipped", "reason": f"리서치 소스 부족 ({len(research)}건 < 3)"}
 
         draft, gate, feedback = "", None, None
-        attempts = 0
+        attempts, re_researched = 0, 0
         for attempts in range(1, config.GATE_MAX_RETRIES + 2):  # 최초 1회 + 재시도
             draft = write_draft(topic, research, feedback)
             gate = gate_draft(draft, topic, research)
             if gate["passed"]:
                 break
             feedback = gate["feedback"]
+            # 왕복 루프 — 게이트가 소스 문제로 판정하면 재작성 전에 재리서치
+            if gate["action"] == "re_research" and re_researched < RE_RESEARCH_MAX:
+                re_researched += 1
+                query = gate["research_query"] or f"{topic['keyword']} {date.today().year}"
+                research = merge_research(gather_research(query), research)
+                feedback += f" (소스를 '{query}'로 재리서치해 최신 자료로 교체했다 — 새 소스 번호 기준으로 다시 써라)"
 
         title = draft.splitlines()[0].removeprefix("제목:").strip() if draft else topic["keyword"]
         body = "\n".join(draft.splitlines()[1:]).strip()
@@ -162,7 +251,7 @@ def generate(topic: dict, conn: sqlite3.Connection | None = None) -> dict:
             )
             conn.commit()
             return {"status": "skipped", "reason": f"게이트 {attempts}회 불합격 (총점 {gate['total']})",
-                    "gate": gate}
+                    "gate": gate, "attempts": attempts, "re_researched": re_researched}
 
         # 합격 — 본문 파일 저장 + posts 기록 (발행은 C3의 일)
         config.ensure_dirs()
@@ -178,7 +267,8 @@ def generate(topic: dict, conn: sqlite3.Connection | None = None) -> dict:
         )
         conn.commit()
         return {"status": "gated", "post_id": cur.lastrowid, "title": title,
-                "body_path": str(body_path), "gate": gate, "attempts": attempts}
+                "body_path": str(body_path), "gate": gate, "attempts": attempts,
+                "re_researched": re_researched}
     finally:
         if own:
             conn.close()
