@@ -75,9 +75,11 @@ def gather_input(conn: sqlite3.Connection) -> dict:
         "SELECT keyword, rank, ai_cited FROM rankings WHERE date = ?", (today,))]
     metric = conn.execute("SELECT * FROM metrics WHERE date = ?", (today,)).fetchone()
     from src.competitors import recent_summary  # 순환 임포트 방지 (지연 임포트)
+    from src.mate_observer import recent_summary as mate_summary
     return {
         "topics": topics, "posts": posts, "ranks": ranks,
         "competitor_watch": recent_summary(conn),  # 공백 기회·브리핑 없는 키워드
+        "mate_watch": mate_summary(conn),  # 메이트 선정자 관찰 힌트 (C7, 주 1회 갱신)
         "citations": json.loads(metric["details_json"])["citations"] if metric else None,
         "cost_usd": guardrails.month_cost_usd(conn),
         "budget_usd": config.MONTHLY_BUDGET_USD,
@@ -112,6 +114,8 @@ def llm_decide(phase: dict, data: dict, policy: dict) -> dict:
 특별 규칙: competitor_watch.stale_opportunities(브리핑은 뜨는데 출처가 낡은 쿼리)가 있으면
 내일 힌트에 최우선 반영하라 — 신선한 글로 인용을 가져올 확률이 가장 높은 표적이다.
 no_briefing_keywords는 인용 기회가 없는 키워드이므로 유사 주제 회피를 권고하라.
+mate_watch.policy_hints는 실제 메이트 선정자 블로그 분석에서 나온 것이다 —
+분야·주제·스타일 방향을 정할 때 참고하라 (confidence가 low면 가볍게만).
 
 JSON만 출력:
 {{"rationale": "오늘 데이터에서 읽은 것과 결정 이유 (2~4문장)",

@@ -7,6 +7,8 @@
   21:30±30분  측정 (C4)
   22:30±20분  일일 보정 + 리포트 (C5)
   09:00       세션 수명 점검 — 만료 7일 전부터 텔레그램 경고
+  화·금 15:00  경쟁·공백 관찰 (C6)
+  일 16:00    메이트 관찰 에이전트 (C7)
 
 모든 작업은 실패해도 스케줄러가 죽지 않는다 — 예외는 텔레그램으로 알리고 다음 주기를 기다린다.
 실행: uv run python -m src.scheduler  (--dry: 스케줄만 출력하고 종료)
@@ -22,7 +24,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
-from src import competitors, config, db, metrics, notify, publisher, steering, topics, writer
+from src import competitors, config, db, mate_observer, metrics, notify, publisher, steering, topics, writer
 from src.guardrails import GuardrailViolation
 
 PUBLISH_WINDOW = (11, 21)  # 발행 예약 창 (시)
@@ -117,6 +119,16 @@ def job_competitors():
           f"공백 {len(result['opportunities'])}건")
 
 
+def job_mate_observer():
+    """C7 — 메이트 관찰·분석 에이전트 (주 1회). 정책 힌트가 나오면 텔레그램 요약."""
+    result = mate_observer.observe()
+    hints = (result["report"] or {}).get("policy_hints", [])
+    if hints:
+        notify.send("🕵️ 메이트 관찰 보고\n" + "\n".join(f"· {h}" for h in hints[:5]))
+    print(f"[{datetime.now():%H:%M}] 메이트 관찰: 도구 {result['tool_calls']}회, "
+          f"힌트 {len(hints)}건")
+
+
 def job_session_check():
     """세션 수명 점검 — 만료 7일 전부터 매일 경고."""
     if not config.SESSION_PATH.exists():
@@ -151,6 +163,10 @@ def build(scheduler: BlockingScheduler) -> BlockingScheduler:
     scheduler.add_job(_safe("경쟁관찰", job_competitors),
                       CronTrigger(day_of_week="tue,fri", hour=15, minute=0, jitter=1800),
                       id="competitors")
+    # C7 메이트 관찰 에이전트 주 1회 — 일요일 오후 (선정은 월 단위라 주 1회면 충분)
+    scheduler.add_job(_safe("메이트관찰", job_mate_observer),
+                      CronTrigger(day_of_week="sun", hour=16, minute=0, jitter=1800),
+                      id="mate-observer")
     return scheduler
 
 

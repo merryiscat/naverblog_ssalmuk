@@ -8,6 +8,7 @@
   decisions   — 일일 자가 보정의 결정과 근거 (C5) — "왜 바꿨는지"가 반드시 남는다
   policy      — 현재 방향(주제 풀·템플릿 등) 스냅샷, 최신 행이 유효 (C5)
   competitors — AI 브리핑에 인용된 경쟁 글 관찰 (C6)
+  mate_watch  — 메이트 관찰 에이전트의 주간 조사 보고 (C7)
   costs       — 모든 LLM·이미지 호출 비용 원장 (가드레일 ②의 근거 데이터)
 """
 
@@ -85,6 +86,14 @@ CREATE TABLE IF NOT EXISTS competitors (
     keyword     TEXT NOT NULL,
     url         TEXT NOT NULL,
     structure_json TEXT,                    -- 헤딩·표·글자수·이미지 수 등 구조 분석
+    created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS mate_watch (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    date        TEXT NOT NULL,
+    report_json TEXT NOT NULL,              -- 에이전트 최종 보고 (JSON — 소식·선정자 분석·정책 힌트)
+    tool_calls  INTEGER,                    -- 이번 조사에 쓴 도구 호출 수
     created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 

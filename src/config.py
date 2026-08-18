@@ -61,6 +61,7 @@ def ensure_dirs() -> None:
 MODEL_WRITER = "gpt-4.1"        # 글 작문 (코딩/작문 특화)
 MODEL_JUDGE = "gpt-5.4-mini"    # 판단 — 주제 스코어링, 품질 게이트 채점
 MODEL_STEER = "gpt-5.4"         # 일일 자가 보정 (최상위 판단)
+MODEL_AGENT = "gpt-5.4-mini"    # 메이트 관찰 에이전트 (도구 사용·탐색 판단)
 
 # 1M 토큰당 달러 단가: (입력, 출력). 비용 적산(llm.py)에 쓴다.
 PRICES_PER_MTOK = {

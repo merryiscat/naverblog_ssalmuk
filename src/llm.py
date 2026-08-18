@@ -73,6 +73,30 @@ def chat(model: str, prompt: str, *, purpose: str, system: str | None = None) ->
         conn.close()
 
 
+def chat_tools(model: str, messages: list, tools: list, *, purpose: str,
+               tool_choice: str = "auto"):
+    """도구(function calling) 지원 호출 — 에이전트 루프용.
+
+    chat()과 달리 대화 이력(messages)을 그대로 받고, assistant 메시지 객체를 돌려준다
+    (message.tool_calls가 있으면 호출자가 도구를 실행할 차례).
+    비용 적산·예산 검사는 chat()과 동일 — 에이전트도 가드레일 ② 아래에 있다.
+    tool_choice="none"이면 모델이 도구를 못 쓰고 최종 답을 내야 한다 (예산 소진 시 사용).
+    """
+    conn = db.connect()
+    try:
+        guardrails.check_monthly_budget(conn)
+        resp = _get_client().chat.completions.create(
+            model=model, messages=messages, tools=tools, tool_choice=tool_choice)
+        tokens_in = resp.usage.prompt_tokens if resp.usage else 0
+        tokens_out = resp.usage.completion_tokens if resp.usage else 0
+        price_in, price_out = config.PRICES_PER_MTOK.get(model, (5.00, 30.00))
+        cost = (tokens_in * price_in + tokens_out * price_out) / 1_000_000
+        _record_cost(conn, "text", model, tokens_in, tokens_out, cost, purpose)
+        return resp.choices[0].message
+    finally:
+        conn.close()
+
+
 def generate_image(prompt: str, *, purpose: str, size: str = "1024x1024") -> bytes:
     """이미지 생성 호출. 텍스트와 같은 예산 원장을 쓴다."""
     conn = db.connect()
