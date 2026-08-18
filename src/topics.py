@@ -114,10 +114,15 @@ def score_golden(candidates: dict[str, dict], skip: set[str]) -> list[dict]:
 
 
 def score_llm(candidates: list[dict]) -> list[dict]:
-    """LLM이 '정보 정리형 글로 쓸 가치'를 0~1로 채점한다."""
+    """LLM이 '정보 정리형 글로 쓸 가치'를 0~1로 채점한다.
+
+    매칭은 키워드 문자열이 아니라 **번호(i)** 로 한다 — 2026-08-19 문자열 매칭이
+    전멸(LLM이 키워드를 변형 표기)해 전원 0점 → 브랜드 단독 키워드가 선정된 사고의 항체.
+    전멸이 다시 발생하면 조용히 넘어가지 않고 예외를 던진다 (스케줄러가 텔레그램 알림).
+    """
     listing = "\n".join(
-        f"- [{c['category']}] {c['keyword']} (월간검색 {c['volume']:,} / 블로그문서 {c['docs']:,} / 골든 {c['golden']:.2f})"
-        for c in candidates
+        f"{i}. [{c['category']}] {c['keyword']} (월간검색 {c['volume']:,} / 블로그문서 {c['docs']:,} / 골든 {c['golden']:.2f})"
+        for i, c in enumerate(candidates)
     )
     prompt = f"""네이버 블로그에 '정보 정리·분석형 글'(경험담 아님)을 써서 AI 브리핑에 인용되는 것이 목표다.
 네이버 메이트는 10개 분야(여행/푸드/레시피/스타일/테크/라이프/컬쳐/미디어/인사이트/취미)별로
@@ -129,18 +134,88 @@ def score_llm(candidates: list[dict]) -> list[dict]:
 - 브랜드·기업명 단독 키워드는 감점 (공식 자료가 이기므로 개인 블로그 인용 기회가 작다)
 - 분야 전문성을 쌓기 좋은 주제군인가
 
-후보:
+후보 (번호로 응답하라):
 {listing}
 
-JSON 배열만 출력: [{{"keyword": "...", "score": 0.0, "reason": "한 줄 근거"}}]"""
+JSON 배열만 출력: [{{"i": 0, "score": 0.0, "reason": "한 줄 근거"}}]"""
     raw = llm.chat(config.MODEL_JUDGE, prompt, purpose="topic-scoring")
     raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    scores = {s["keyword"]: s for s in json.loads(raw)}
+    for s in json.loads(raw):
+        i = int(s.get("i", -1))
+        if 0 <= i < len(candidates):
+            candidates[i]["llm_score"] = float(s.get("score", 0))
+            candidates[i]["reason"] = s.get("reason", "")
     for c in candidates:
-        s = scores.get(c["keyword"], {})
-        c["llm_score"] = float(s.get("score", 0))
-        c["reason"] = s.get("reason", "채점 누락")
+        c.setdefault("llm_score", 0.0)
+        c.setdefault("reason", "채점 누락")
+    if all(c["llm_score"] == 0 for c in candidates):
+        raise RuntimeError("주제 채점 전멸 — LLM 응답과 후보 매칭 실패, 응답 형식 점검 필요")
     return candidates
+
+
+def shortlist(scored: list[dict], size: int = 10, per_cat: int = 2) -> list[dict]:
+    """오케스트레이터에 올릴 숏리스트 — 분야당 최대 per_cat개로 다양성을 강제한 10개."""
+    out, counts = [], {}
+    for c in sorted(scored, key=lambda c: (-c["llm_score"], -c["golden"])):
+        if counts.get(c["category"], 0) >= per_cat:
+            continue
+        counts[c["category"]] = counts.get(c["category"], 0) + 1
+        out.append(c)
+        if len(out) >= size:
+            break
+    return out
+
+
+def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
+    """선정 오케스트레이터 — 점수 상위가 아니라 '전략에 맞는 조합'을 고른다.
+
+    (사용자 제안 2026-08-19: 서로 다른 주제 10개에서 오케스트레이터가 선택)
+    컨텍스트: 국면(Phase 0=분산 의무), 최근 선정 분야 쏠림, 게이트 차단 이력,
+    C5의 내일 힌트. 실패 시 결정론 폴백(분야 중복 없는 상위 2+1)이라 발굴은 계속된다.
+    """
+    from src.steering import decide_phase, load_policy  # 지연 임포트 (순환 방지)
+    phase = decide_phase(conn)
+    hint = (load_policy(conn).get("tomorrow_hint") or {})
+    recent_cats = [f"{r['category']}:{r['n']}" for r in conn.execute(
+        "SELECT category, COUNT(*) n FROM topics WHERE status = 'selected' "
+        "AND date >= date('now', 'localtime', '-7 days') GROUP BY category ORDER BY n DESC")]
+    gate_skips = [r["keyword"] for r in conn.execute(
+        "SELECT DISTINCT t.keyword FROM posts p JOIN topics t ON p.topic_id = t.id "
+        "WHERE p.status = 'skipped' AND p.created_at >= datetime('now', 'localtime', '-7 days')")]
+
+    listing = "\n".join(
+        f"{i}. [{c['category']}] {c['keyword']} (골든 {c['golden']:.2f} / 채점 {c['llm_score']:.2f} — {c['reason']})"
+        for i, c in enumerate(short))
+    prompt = f"""너는 블로그 주제 선정 오케스트레이터다. 오늘 쓸 주제 2개(selected)와 예비 1개(reserve)를 골라라.
+
+전략 컨텍스트:
+- 국면: Phase {phase['phase']} — {phase['why']}
+  (Phase 0·1에서는 selected 2개가 **서로 다른 분야**여야 한다 — 분산 탐색 원칙)
+- 최근 7일 선정 분야 분포: {', '.join(recent_cats) or '없음'} — 쏠린 분야는 피하라
+- 최근 게이트 차단 키워드: {', '.join(gate_skips) or '없음'} — 같은 유형(공식 소스 없는
+  여행지·현장 정보류 등) 재선정을 피하라
+- 보정(C5)의 내일 힌트: {json.dumps(hint, ensure_ascii=False)}
+- 브랜드·기업명 단독 키워드는 선정 금지
+
+숏리스트 (번호로 응답):
+{listing}
+
+JSON만 출력: {{"selected": [0, 1], "reserve": 2, "rationale": "선정 조합의 이유 (2~3문장)"}}"""
+    raw = llm.chat(config.MODEL_JUDGE, prompt, purpose="topic-orchestration")
+    raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    pick = json.loads(raw)
+    sel = [int(i) for i in pick.get("selected", [])][:2]
+    res = int(pick.get("reserve", -1))
+    if len(sel) < 2 or any(not (0 <= i < len(short)) for i in sel + [res]):
+        raise ValueError(f"오케스트레이터 응답 이상: {pick}")
+    # 검증(코드 레벨): Phase 0·1 분야 중복 금지 — LLM이 어겨도 여기서 교정
+    if phase["phase"] < 2 and short[sel[0]]["category"] == short[sel[1]]["category"]:
+        alt = next((i for i, c in enumerate(short)
+                    if i not in sel and c["category"] != short[sel[0]]["category"]), None)
+        if alt is not None:
+            pick["rationale"] += f" [검증기: 분야 중복으로 {short[sel[1]]['keyword']}→{short[alt]['keyword']} 교체]"
+            sel[1] = alt
+    return {"selected": sel, "reserve": res, "rationale": pick.get("rationale", "")}
 
 
 def discover(conn: sqlite3.Connection | None = None) -> list[dict]:
@@ -157,17 +232,45 @@ def discover(conn: sqlite3.Connection | None = None) -> list[dict]:
         volumes = expand_candidates(seeds)
         candidates = score_golden(volumes, skip=recent_keywords(conn))
         top = score_llm(candidates[:LLM_CANDIDATES])
-        # 최종 순위 = LLM 점수 우선, 동점이면 골든 점수
         top.sort(key=lambda c: (-c["llm_score"], -c["golden"]))
 
-        for rank, c in enumerate(top):
-            status = "selected" if rank < 2 else ("reserve" if rank == 2 else "candidate")
+        # 최종 선정 — 오케스트레이터 (실패 시 결정론 폴백: 분야 중복 없는 상위 2+1)
+        short = shortlist(top)
+        try:
+            pick = orchestrate_selection(conn, short)
+        except Exception as e:
+            print(f"오케스트레이터 실패 — 결정론 폴백: {type(e).__name__}: {e}")
+            fallback = shortlist(top, size=3, per_cat=1)
+            pick = {"selected": [short.index(c) for c in fallback[:2]],
+                    "reserve": short.index(fallback[2]) if len(fallback) > 2 else -1,
+                    "rationale": "오케스트레이터 실패 — 분야 중복 없는 점수 상위 폴백"}
+
+        chosen = {short[i]["keyword"]: "selected" for i in pick["selected"]}
+        if 0 <= pick["reserve"] < len(short):
+            chosen.setdefault(short[pick["reserve"]]["keyword"], "reserve")
+        # 검증기 교체 등으로 reserve가 selected와 겹쳤으면 다음 후보로 보충
+        if "reserve" not in chosen.values():
+            for c in short:
+                if c["keyword"] not in chosen:
+                    chosen[c["keyword"]] = "reserve"
+                    break
+
+        for c in top:
+            status = chosen.get(c["keyword"], "candidate")
             conn.execute(
                 "INSERT INTO topics (date, keyword, category, search_vol, doc_count, "
                 "golden_score, llm_score, rationale, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (today, c["keyword"], c["category"], c["volume"], c["docs"], c["golden"],
                  c["llm_score"], c["reason"], status),
             )
+        # 선정 조합의 근거를 결정 로그에 남긴다 (복기 재료 — 전권 위임의 최소 조건)
+        conn.execute(
+            "INSERT INTO decisions (date, input_summary, decision_json, rationale) VALUES (?, ?, ?, ?)",
+            (today, json.dumps({"shortlist": [c["keyword"] for c in short]}, ensure_ascii=False),
+             json.dumps({"purpose": "topic-orchestration",
+                         "selected": [short[i]["keyword"] for i in pick["selected"]]},
+                        ensure_ascii=False),
+             pick["rationale"]))
         conn.commit()
         return top
     finally:
