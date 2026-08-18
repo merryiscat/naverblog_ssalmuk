@@ -58,6 +58,8 @@ MISSION = """너는 네이버 블로그 자동 운영 시스템의 '메이트 �
    (선정자 명단·조명 페이지·인터뷰·선정 후기 검색 → 블로그 URL 확보 → analyze_blog_post)
 3. 우리 전략에 반영할 점 도출
 
+{prev_block}
+
 규칙:
 - 도구 호출은 총 {budget}회 이내. 넓게 검색해 갈래를 잡고, 유망한 것만 깊이 파라
 - 찾은 사실(소스 URL 포함)과 너의 추정을 구분하라
@@ -68,6 +70,26 @@ MISSION = """너는 네이버 블로그 자동 운영 시스템의 '메이트 �
  "analyzed_blogs": [{{"url": "", "field": "", "takeaway": "이 블로그에서 배울 점 (구조·주제·스타일)"}}],
  "policy_hints": ["C5 보정에 넣을 구체 힌트 — 분야·주제·글 스타일 방향"],
  "confidence": "high|medium|low — 이번 조사의 신뢰도와 이유"}}"""
+
+
+PREV_BLOCK = """복기 — 지난 조사({prev_date})의 요약이다. 같은 검색을 반복하지 말고 이어서 파라.
+특히 지난번에 못 찾은 것(선정자 명단 위치: {prev_where} / confidence: {prev_conf})을 우선 공략하라:
+{prev_hints}"""
+
+
+def _prev_report_block(conn: sqlite3.Connection) -> str:
+    """복기 재료 — 직전 조사 보고를 다음 실행의 출발점으로 넘긴다 (없으면 첫 조사 안내)."""
+    row = conn.execute(
+        "SELECT date, report_json FROM mate_watch ORDER BY id DESC LIMIT 1").fetchone()
+    if not row:
+        return "(첫 조사 — 지난 기록 없음)"
+    r = json.loads(row["report_json"] or "{}")
+    sel = r.get("selection_observed") or {}
+    return PREV_BLOCK.format(
+        prev_date=row["date"],
+        prev_where=sel.get("where") or "미확보",
+        prev_conf=r.get("confidence", "?"),
+        prev_hints="\n".join(f"- {h}" for h in r.get("policy_hints", [])[:5]) or "- (힌트 없음)")
 
 
 def _run_tool(page, name: str, args: dict) -> str:
@@ -99,7 +121,8 @@ def observe(conn: sqlite3.Connection | None = None) -> dict:
     own = conn is None
     conn = conn or db.connect()
     today = date.today().isoformat()
-    messages = [{"role": "user", "content": MISSION.format(today=today, budget=TOOL_BUDGET)}]
+    messages = [{"role": "user", "content": MISSION.format(
+        today=today, budget=TOOL_BUDGET, prev_block=_prev_report_block(conn))}]
     calls, report = 0, None
     try:
         with sync_playwright() as pl:
