@@ -54,6 +54,10 @@ run_topics / scheduler를 직접 실행하지 않는다 — 서버와 이중 발
 
 - 세션 갱신(30일 주기): 위저드 재로그인은 **개발 PC(화면 있는 곳)** 에서 하고
   `data/session/storage_state.json`만 서버로 다시 scp 한다. 만료 7일 전 텔레그램 소환이 온다.
+  scp 후 `chmod 600 ~/naverblog_ssalmuk/data/session/storage_state.json` 재적용
+  (2026-08-21 보안 조치 — scp가 권한을 644로 되돌린다).
+- sudo 없이 재기동: systemd `Restart=always`라 메인 PID kill이면 30초 내 자동 복귀 —
+  `kill $(systemctl show -p MainPID --value naverblog)` (2026-08-21 실사용)
 - 코드 업데이트 (개발 PC에서 — **data/·.env는 절대 덮어쓰지 않는다, 서버가 운영 상태의 단일 출처**):
   ```bash
   tar czf - --exclude=.venv --exclude=data --exclude=.env --exclude=.playwright-mcp --exclude='__pycache__' . \
