@@ -7,6 +7,7 @@
   21:30±30분  측정 (C4)
   22:30±20분  일일 보정 + 리포트 (C5)
   09:00       세션 수명 점검 — 만료 7일 전부터 텔레그램 경고
+  토 09:00    수동 작업 대기열 리마인더 (docs/manual-queue.md → 텔레그램)
   화·금 15:00  경쟁·공백 관찰 (C6)
   일 16:00    메이트 관찰 에이전트 (C7)
   화·목·토 23:15  블로그 검수 에이전트 (실화면 비전 검수 + 복기)
@@ -18,6 +19,7 @@
 
 import json
 import random
+import re
 import sys
 import traceback
 from datetime import datetime, timedelta
@@ -219,6 +221,37 @@ def job_inspector():
             traceback.print_exc()
 
 
+def job_manual_queue():
+    """수동 작업 대기열 주간 리마인더 (토 09:00, 사용자 요청 2026-08-21).
+
+    docs/manual-queue.md의 '대기 중' 표를 파싱해 텔레그램으로 보낸다.
+    비어 있어도 보낸다 — 침묵과 고장을 구분할 수 있게.
+    """
+    path = config.ROOT / "docs" / "manual-queue.md"
+    if not path.exists():
+        notify.send("🗒️ 수동 작업 대기열 파일 없음 (docs/manual-queue.md) — 배포 확인 필요")
+        return
+    text = path.read_text(encoding="utf-8")
+    pending = text.split("## 대기 중")[1].split("## 완료")[0] if "## 대기 중" in text else ""
+    items = []
+    for row in pending.splitlines():
+        if not row.startswith("|") or set(row.replace("|", "").strip()) <= {"-", " "}:
+            continue
+        cells = [c.strip() for c in row.strip("|").split("|")]
+        if not cells or cells[0] in ("작업", ""):
+            continue
+        # 마크다운 장식 제거 — [텍스트](링크) → 텍스트, ** 제거
+        name = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", cells[0]).replace("**", "")
+        items.append(name)
+    if items:
+        notify.send(f"🗒️ 주간 수동 작업 대기열 ({len(items)}건)\n"
+                    + "\n".join(f"· {i}" for i in items)
+                    + "\n\n방법·배경: docs/manual-queue.md")
+    else:
+        notify.send("🗒️ 주간 수동 작업 대기열 — 비어 있음 ✅")
+    print(f"[{datetime.now():%H:%M}] 수동 대기열 리마인더: {len(items)}건")
+
+
 def job_session_check():
     """세션 수명 점검 — 만료 7일 전부터 매일 경고."""
     if not config.SESSION_PATH.exists():
@@ -253,6 +286,9 @@ def build(scheduler: BlockingScheduler) -> BlockingScheduler:
                       CronTrigger(hour=22, minute=30, jitter=1200), id="steering")
     scheduler.add_job(_safe("세션점검", job_session_check),
                       CronTrigger(hour=9, minute=0), id="session-check")
+    # 수동 작업 대기열 리마인더 주 1회 — 토요일 아침, 주말에 처리하기 좋은 시점
+    scheduler.add_job(_safe("수동대기열", job_manual_queue),
+                      CronTrigger(day_of_week="sat", hour=9, minute=0), id="manual-queue")
     # 주간 루프 (loop-design): 경쟁·공백 관찰 주 2회 — 발행 창과 겹치지 않는 오후 3시대
     scheduler.add_job(_safe("경쟁관찰", job_competitors),
                       CronTrigger(day_of_week="tue,fri", hour=15, minute=0, jitter=1800),
