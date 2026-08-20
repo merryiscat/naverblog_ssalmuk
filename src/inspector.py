@@ -35,6 +35,8 @@ CHECKLIST = """너는 네이버 블로그 품질 검수자다. 첨부 스크린�
 점검 항목:
 - 렌더링: 마크다운 원문 노출(##, |표|, ** 등), 표·인용구 깨짐, 각주 번호([1] 등)가
   실링크 없이 원시 텍스트로 노출
+- 카테고리 매칭: 글 상단의 카테고리명이 글 주제의 분야와 맞는가
+  (예: 정책 글이 '여행' 카테고리에 있으면 지적)
 - 신선도: 제목·본문의 기준 시점이 과거 연도("2024년 기준" 등)로 표기
 - 시각 요소: 이미지 없는 글, 밋밋한 첫인상, 썸네일 부재
 - 신뢰도: 프로필(이미지·소개), 카테고리 구성(이름·개수), 블로그명과 콘텐츠의 정합
@@ -55,13 +57,15 @@ PREV_BLOCK = """복기 — 지난 검수({prev_date})의 지적 사항이다. �
 {prev_issues}"""
 
 
-def _recent_post_urls(conn: sqlite3.Connection) -> list[str]:
-    """고민 단계 — 검수 대상 선정: 가장 최근 발행 글부터."""
+def _recent_posts(conn: sqlite3.Connection) -> list[dict]:
+    """고민 단계 — 검수 대상 선정: 가장 최근 발행 글부터 (URL + 목표 카테고리)."""
     rows = conn.execute(
-        "SELECT publish_url FROM posts WHERE status IN ('published', 'verified') "
-        "AND publish_url IS NOT NULL ORDER BY published_at DESC LIMIT ?",
+        "SELECT p.publish_url, p.title, t.category FROM posts p "
+        "LEFT JOIN topics t ON p.topic_id = t.id "
+        "WHERE p.status IN ('published', 'verified') "
+        "AND p.publish_url IS NOT NULL ORDER BY p.published_at DESC LIMIT ?",
         (INSPECT_POSTS,)).fetchall()
-    urls = []
+    posts = []
     for r in rows:
         # 발행 직후 저장된 URL의 잡다한 파라미터 제거 → 독자가 보는 PostView로 정규화
         u = r["publish_url"]
@@ -69,13 +73,19 @@ def _recent_post_urls(conn: sqlite3.Connection) -> list[str]:
             log_no = u.split("logNo=")[1].split("&")[0]
             u = (f"https://blog.naver.com/PostView.naver"
                  f"?blogId={config.NAVER_BLOG_ID}&logNo={log_no}")
-        urls.append(u)
-    return urls
+        posts.append({"url": u, "title": r["title"], "category": r["category"]})
+    return posts
 
 
-def capture(conn: sqlite3.Connection) -> list[bytes]:
-    """실행 단계 1 — 비로그인(독자 관점) 브라우저로 화면을 찍는다."""
-    shots = []
+def capture(conn: sqlite3.Connection) -> tuple[list[bytes], list[dict]]:
+    """실행 단계 1 — 비로그인(독자 관점) 브라우저로 화면을 찍는다.
+
+    스크린샷과 함께 **코드 대조 결과**도 돌려준다: 글에 실제 표시된 카테고리를
+    DOM으로 읽어 DB의 목표 분야와 기계 대조 — 비전 LLM에 기대지 않는 결정론 체크.
+    (2026-08-21: 전 글이 '여행'에 발행된 오배정을 검수가 놓친 사고의 항체 —
+    체크리스트에 없는 항목은 비전이 안 보고, 값 대조는 애초에 코드의 일)
+    """
+    shots, checks = [], []
     with sync_playwright() as pl:
         browser = pl.chromium.launch(headless=True)
         # 세션 없이 — 독자가 보는 그대로 (관리 버튼·내 계정 요소 없이)
@@ -85,16 +95,30 @@ def capture(conn: sqlite3.Connection) -> list[bytes]:
             page.goto(f"https://blog.naver.com/{config.NAVER_BLOG_ID}", timeout=45000)
             time.sleep(3)
             shots.append(page.screenshot())
-            for url in _recent_post_urls(conn):
-                page.goto(url, timeout=45000)
+            for post in _recent_posts(conn):
+                page.goto(post["url"], timeout=45000)
                 time.sleep(2)
                 shots.append(page.screenshot())  # 상단
+                # 코드 대조 — 글 상단 카테고리 표시 vs DB 목표 분야
+                shown = page.evaluate(
+                    """() => {
+                        const el = document.querySelector(
+                            ".blog2_series, .cate, a[href*='categoryNo']");
+                        return el ? el.textContent.trim() : '';
+                    }""")
+                if post["category"] and shown and shown != post["category"]:
+                    checks.append({
+                        "where": "코드 대조",
+                        "what": f"'{post['title'][:25]}' 글이 '{shown}' 카테고리에 있음 "
+                                f"(목표: {post['category']})",
+                        "severity": "high",
+                        "fix": "발행 카테고리 반영 검증(publisher) 로그 확인 + 글 카테고리 이동"})
                 page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.45)")
                 time.sleep(1)
                 shots.append(page.screenshot())  # 중단
         finally:
             browser.close()
-    return shots
+    return shots, checks
 
 
 def _prev_issues(conn: sqlite3.Connection) -> tuple[str, list[str]]:
@@ -121,7 +145,7 @@ def inspect(conn: sqlite3.Connection | None = None) -> dict:
                                         prev_issues="\n".join(f"- {i}" for i in prev_items))
                       if prev_items else "(첫 검수 — 지난 지적 없음)")
 
-        shots = capture(conn)
+        shots, code_checks = capture(conn)
         raw = llm.chat_vision(config.MODEL_INSPECTOR,
                               CHECKLIST.format(today=today, prev_block=prev_block),
                               shots, purpose="blog-inspect")
@@ -130,6 +154,9 @@ def inspect(conn: sqlite3.Connection | None = None) -> dict:
             report = json.loads(raw)
         except json.JSONDecodeError:
             report = {"parse_error": raw[:800]}
+        # 코드 대조 결과를 issues에 합류 — 텔레그램 보고·복기·오케스트레이션이 함께 처리
+        if code_checks:
+            report.setdefault("issues", []).extend(code_checks)
 
         conn.execute(
             "INSERT INTO inspections (date, report_json, shots) VALUES (?, ?, ?)",
