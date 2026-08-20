@@ -12,6 +12,12 @@
   복기 — **지난 검수의 지적을 이번 화면에서 재확인** → resolved/persisting 추적.
          같은 지적이 반복되면 C5 보정과 텔레그램에서 우선순위가 올라간다
 
+검수는 두 갈래다 (2026-08-21 사용자 지시로 구분):
+  A. 정기 점검 — REGULAR_CHECKS의 알려진 실패 유형을 매회 pass/fail 회귀 판정.
+     기계 대조 가능한 항목은 코드 체크 병행 (카테고리 매칭).
+  B. 신규 발굴 — A에 없는 문제를 탐색. 발굴이 2회 반복되거나 실사고가 되면
+     REGULAR_CHECKS로 승격 → 목록이 사고에서 배우며 자란다.
+
 주 3회 (화·목·토 23:15±15분 — 당일 발행분이 다 올라온 뒤, C4·C5와 무충돌).
 결과는 다음날 C5 보정 입력(self_inspection)으로 들어간다.
 """
@@ -28,24 +34,41 @@ from src import config, db, llm
 INSPECT_POSTS = 2      # 최근 발행 글 몇 개를 검수할지
 VIEWPORT = {"width": 1280, "height": 1600}
 
+# 정기 점검 목록 — 매 검수마다 pass/fail 회귀 판정을 받는 알려진 실패 유형.
+# 발굴(B)에서 나온 이슈가 2회 반복(persisting)되거나 실사고로 확인되면
+# 여기로 승격한다 (2026-08-21 구분 도입 — 카테고리 오배정을 "그 외"에 묻혀
+# 못 잡은 사고의 항체. mistakes.md 항체와 연동해 목록이 자란다).
+# ※ 기계 대조 가능한 것은 코드 체크가 병행한다 (카테고리 매칭 — capture()).
+REGULAR_CHECKS = [
+    "렌더링: 마크다운 원문(##, |표|, ** 등)이나 깨진 표·인용구가 노출되는 곳이 없는가",
+    "각주: 각주 번호([1] 등)가 실링크 없이 원시 텍스트로 남아 있지 않은가",
+    "신선도 표기: 제목·본문의 기준 시점이 과거 연도('2024년 기준' 등)로 표기되지 않았는가",
+    "카테고리 매칭: 각 글 상단의 카테고리명이 글 주제의 분야와 맞는가",
+    "이미지: 글마다 대표 이미지가 있고 첫인상이 밋밋하지 않은가",
+    "썸네일 다양성: 최근 글들의 대표 이미지가 획일적으로 반복되지 않는가",
+    "프로필 정합: 프로필(이미지·소개)·블로그명이 콘텐츠 정체성과 맞는가",
+    "표 가독성: 표가 본문 폭에서 깨지거나 과도하게 길어 읽기 어렵지 않은가",
+]
+
 CHECKLIST = """너는 네이버 블로그 품질 검수자다. 첨부 스크린샷은 우리가 자동 운영하는
 블로그의 실제 화면이다 — 1장째: 블로그 메인, 이후: 최근 발행 글 (글마다 상단·중단 2장).
-독자와 네이버 메이트 심사자의 눈으로 문제를 찾아라. 오늘: {today}
+오늘: {today}
 
-점검 항목:
-- 렌더링: 마크다운 원문 노출(##, |표|, ** 등), 표·인용구 깨짐, 각주 번호([1] 등)가
-  실링크 없이 원시 텍스트로 노출
-- 카테고리 매칭: 글 상단의 카테고리명이 글 주제의 분야와 맞는가
-  (예: 정책 글이 '여행' 카테고리에 있으면 지적)
-- 신선도: 제목·본문의 기준 시점이 과거 연도("2024년 기준" 등)로 표기
-- 시각 요소: 이미지 없는 글, 밋밋한 첫인상, 썸네일 부재
-- 신뢰도: 프로필(이미지·소개), 카테고리 구성(이름·개수), 블로그명과 콘텐츠의 정합
-- 그 외 독자가 이탈하거나 심사자가 감점할 만한 모든 것
+## A. 정기 점검 (회귀 체크리스트)
+아래 번호 항목을 **하나도 빠짐없이** 화면에서 확인하고 항목마다 판정하라.
+화면에 근거가 없으면 fail로 추측하지 말고 unknown으로:
+{regular_checks}
+
+## B. 신규 발굴 (탐색)
+A에 **없는** 문제를 독자와 네이버 메이트 심사자의 눈으로 찾아라 — A의 재탕은 금지.
+새로운 유형의 렌더링 문제, 신뢰도 신호, 이탈 요인, 심사 감점 요인 등 무엇이든.
+발굴이 없으면 빈 배열로 두라 (억지로 만들지 말 것).
 
 {prev_block}
 
 JSON만 출력:
-{{"issues": [{{"where": "메인 | 글 제목 일부", "what": "문제", "severity": "high|mid|low",
+{{"checklist": [{{"i": 0, "status": "pass|fail|unknown", "note": "fail·unknown일 때 근거 한 줄"}}],
+ "issues": [{{"where": "메인 | 글 제목 일부", "what": "A에 없는 새 문제", "severity": "high|mid|low",
   "fix": "고치는 방법 — 코드 수정 / 수동 작업 구분"}}],
  "resolved": ["지난 지적 중 이번 화면에서 해결 확인된 것"],
  "persisting": ["지난 지적 중 여전히 남아 있는 것"],
@@ -146,14 +169,27 @@ def inspect(conn: sqlite3.Connection | None = None) -> dict:
                       if prev_items else "(첫 검수 — 지난 지적 없음)")
 
         shots, code_checks = capture(conn)
-        raw = llm.chat_vision(config.MODEL_INSPECTOR,
-                              CHECKLIST.format(today=today, prev_block=prev_block),
-                              shots, purpose="blog-inspect")
+        prompt = CHECKLIST.format(
+            today=today, prev_block=prev_block,
+            regular_checks="\n".join(f"{i}. {c}" for i, c in enumerate(REGULAR_CHECKS)))
+        raw = llm.chat_vision(config.MODEL_INSPECTOR, prompt, shots, purpose="blog-inspect")
         raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         try:
             report = json.loads(raw)
         except json.JSONDecodeError:
             report = {"parse_error": raw[:800]}
+        # 정기 점검 판정 정규화 — 번호를 항목명으로 (보고·복기 가독성)
+        checks = []
+        for c in report.get("checklist", []):
+            try:
+                i = int(c.get("i", -1))
+            except (TypeError, ValueError):
+                continue
+            if 0 <= i < len(REGULAR_CHECKS):
+                checks.append({"item": REGULAR_CHECKS[i].split(":")[0],
+                               "status": c.get("status", "unknown"),
+                               "note": c.get("note", "")})
+        report["checklist"] = checks
         # 코드 대조 결과를 issues에 합류 — 텔레그램 보고·복기·오케스트레이션이 함께 처리
         if code_checks:
             report.setdefault("issues", []).extend(code_checks)
@@ -180,6 +216,9 @@ def recent_summary(conn: sqlite3.Connection, days: int = 4) -> dict:
         "issues": [{"where": i.get("where"), "what": i.get("what"),
                     "severity": i.get("severity"), "fix": i.get("fix")}
                    for i in r.get("issues", [])],
+        "checklist_fails": [{"item": c.get("item"), "note": c.get("note")}
+                            for c in r.get("checklist", [])
+                            if c.get("status") == "fail"],  # 정기 점검 실패 — 회귀 신호
         "persisting": r.get("persisting", []),  # 반복 지적 — 우선 처리 대상
         "overall": r.get("overall"),
     }

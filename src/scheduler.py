@@ -192,18 +192,21 @@ def job_inspector():
     report = result["report"] or {}
     urgent = [i for i in report.get("issues", []) if i.get("severity") in ("high", "mid")]
     persisting = report.get("persisting", [])
-    if urgent or persisting:
+    fails = [c for c in report.get("checklist", []) if c.get("status") == "fail"]
+    if urgent or persisting or fails:
         lines = ["🔍 블로그 검수 보고"]
+        for c in fails[:5]:  # 정기 점검 실패 = 알려진 유형의 회귀 — 최우선 표시
+            lines.append(f"📋 정기 실패 — {c.get('item')}: {c.get('note', '')[:60]}")
         for i in urgent[:5]:
             lines.append(f"[{i.get('severity')}] {i.get('where')}: {i.get('what')}")
         if persisting:
             lines.append("♻️ 반복 지적: " + "; ".join(persisting[:3]))
         notify.send("\n".join(lines))
     print(f"[{datetime.now():%H:%M}] 블로그 검수: 스크린샷 {result['shots']}장, "
-          f"지적 {len(report.get('issues', []))}건 (반복 {len(persisting)}건)")
+          f"정기 실패 {len(fails)}건 / 발굴 {len(report.get('issues', []))}건 (반복 {len(persisting)}건)")
 
-    # 검수 직후 오케스트레이션 — 지적이 있을 때만 (없으면 결정할 것도 없다)
-    if report.get("issues"):
+    # 검수 직후 오케스트레이션 — 정기 실패든 발굴이든 지적이 있을 때만
+    if report.get("issues") or fails:
         try:
             cur = orchestrator.curate(report)
             lines = ["🎛️ 검수 오케스트레이터 결정"]
