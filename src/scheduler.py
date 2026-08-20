@@ -10,6 +10,7 @@
   화·금 15:00  경쟁·공백 관찰 (C6)
   일 16:00    메이트 관찰 에이전트 (C7)
   화·목·토 23:15  블로그 검수 에이전트 (실화면 비전 검수 + 복기)
+                  → 직후 검수 오케스트레이터가 결정, 수행 에이전트가 블로그 설정 반영
 
 모든 작업은 실패해도 스케줄러가 죽지 않는다 — 예외는 텔레그램으로 알리고 다음 주기를 기다린다.
 실행: uv run python -m src.scheduler  (--dry: 스케줄만 출력하고 종료)
@@ -24,7 +25,7 @@ from datetime import datetime, timedelta
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from src import competitors, config, db, inspector, mate_observer, metrics, notify, publisher, steering, topics, writer
+from src import competitors, config, db, inspector, mate_observer, metrics, notify, orchestrator, publisher, steering, topics, writer
 from src.guardrails import GuardrailViolation
 
 PUBLISH_WINDOW = (11, 21)  # 발행 예약 창 (시)
@@ -57,21 +58,41 @@ def job_generate():
     예약을 메모리(DateTrigger)가 아니라 posts.scheduled_at에 남긴다 —
     상주 프로세스가 재시작돼도 예약이 증발하지 않는다 (2026-08-19 버그 수정).
     실제 발행은 job_publish_due 폴러가 집어간다.
+
+    게이트 탈락으로 구멍이 나면 오늘의 예비(reserve) 주제를 selected로 승격해
+    한 번 더 시도한다 — 기본 3건("3+α"의 3)을 지향 (2026-08-20 사용자 결정.
+    8/20 유튜브 프리미엄 게이트 탈락으로 일 1건만 발행된 것이 계기).
     """
     conn = db.connect()
     try:
-        rows = conn.execute(
+        queue = [dict(r) for r in conn.execute(
             "SELECT * FROM topics WHERE status = 'selected' "
-            "AND date = date('now', 'localtime')").fetchall()
-        publish_times = _random_publish_times(len(rows))
-        for topic, when in zip(rows, publish_times):
-            result = writer.generate(dict(topic), conn)
+            "AND date = date('now', 'localtime')").fetchall()]
+        publish_times = _random_publish_times(len(queue))
+        gated = 0
+        while queue:
+            topic = queue.pop(0)
+            result = writer.generate(topic, conn)
             if result["status"] != "gated":
                 print(f"생성 스킵: {topic['keyword']} — {result.get('reason')}")
+                # 예비 투입 — 오늘 reserve 하나를 승격해 대기열 뒤에 붙인다
+                # (승격분도 탈락하면 예비가 더 없어 그대로 끝 — 재시도 무한루프 없음)
+                res = conn.execute(
+                    "SELECT * FROM topics WHERE status = 'reserve' "
+                    "AND date = date('now', 'localtime') LIMIT 1").fetchone()
+                if res:
+                    conn.execute("UPDATE topics SET status = 'selected' WHERE id = ?",
+                                 (res["id"],))
+                    conn.commit()
+                    queue.append(dict(res))
+                    print(f"예비 투입: {res['keyword']} — {topic['keyword']} 탈락 대체")
                 continue
+            when = (publish_times[gated] if gated < len(publish_times)
+                    else datetime.now() + timedelta(minutes=random.randint(30, 90)))
             conn.execute("UPDATE posts SET scheduled_at = ? WHERE id = ?",
                          (when.strftime("%Y-%m-%d %H:%M:%S"), result["post_id"]))
             conn.commit()
+            gated += 1
             print(f"발행 예약: [{result['post_id']}] {result['title'][:30]} → {when:%H:%M}")
     finally:
         conn.close()
@@ -158,7 +179,12 @@ def job_mate_observer():
 
 
 def job_inspector():
-    """블로그 검수 에이전트 (주 3회). 심각·반복 지적은 텔레그램으로."""
+    """블로그 검수 에이전트 (주 3회) → 검수 오케스트레이터가 결정·수행까지.
+
+    2026-08-20 사용자 위임: 검수 의견을 "사용자 결정 대기"로 쌓지 않는다 —
+    오케스트레이터(gpt-5.4)가 결정하고 수행 에이전트(blog_actions)가 실행,
+    사람은 결과 보고만 받는다. 오케스트레이션 실패가 검수 기록을 해치지 않게 분리.
+    """
     result = inspector.inspect()
     report = result["report"] or {}
     urgent = [i for i in report.get("issues", []) if i.get("severity") in ("high", "mid")]
@@ -172,6 +198,24 @@ def job_inspector():
         notify.send("\n".join(lines))
     print(f"[{datetime.now():%H:%M}] 블로그 검수: 스크린샷 {result['shots']}장, "
           f"지적 {len(report.get('issues', []))}건 (반복 {len(persisting)}건)")
+
+    # 검수 직후 오케스트레이션 — 지적이 있을 때만 (없으면 결정할 것도 없다)
+    if report.get("issues"):
+        try:
+            cur = orchestrator.curate(report)
+            lines = ["🎛️ 검수 오케스트레이터 결정"]
+            for r in cur.get("results", []):
+                mark = "✅" if r.get("ok") else "❌"
+                lines.append(f"{mark} {r['action']}: {str(r.get('value', ''))[:40]} — {r['detail'][:60]}")
+            for b in cur.get("blocked", []):
+                lines.append(f"🚧 {b}")
+            for m in cur.get("manual", [])[:3]:
+                lines.append(f"🙋 수동 필요: {m.get('what', '')[:60]}")
+            lines.append(f"근거: {cur.get('rationale', '')[:200]}")
+            notify.send("\n".join(lines))
+        except Exception as e:
+            notify.send(f"⚠️ 검수 오케스트레이터 오류: {type(e).__name__}: {e}")
+            traceback.print_exc()
 
 
 def job_session_check():
