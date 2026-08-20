@@ -16,3 +16,4 @@
 - [status.md](status.md) — 작업 보드 (착수 전 먼저 읽기)
 - [mistakes.md](mistakes.md) — 실수 연대기 (항체 포함)
 - [pending.md](pending.md) — 보류 안건 대장
+- [manual-queue.md](manual-queue.md) — 수동 작업 대기열 (사람 손이 필요한 것만, 완료 이력 포함)
