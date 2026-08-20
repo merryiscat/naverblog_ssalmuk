@@ -6,7 +6,8 @@
   ② 검색량 상위 후보만 검색 API로 블로그 문서수 조회 (쿼리 절약)
   ③ 골든키워드 점수 = 월간 검색량 ÷ 문서수 (수요 대비 공급이 빈 곳)
   ④ LLM(판단 모델)이 '정보형 글로 쓸 가치'를 채점 — 골든 점수 상위만 투입
-  ⑤ 최종 상위 1~2개 selected, 다음 1개 reserve로 topics 테이블에 기록
+  ⑤ 최종 3개 selected(config.DAILY_SELECT_COUNT), 다음 1개 reserve로 topics 테이블에 기록
+     (2026-08-20 사용자 결정: 일 기본 3건 + 예비 — 게이트 탈락 시 스케줄러가 예비 투입)
 """
 
 import json
@@ -183,14 +184,15 @@ def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
         "SELECT DISTINCT t.keyword FROM posts p JOIN topics t ON p.topic_id = t.id "
         "WHERE p.status = 'skipped' AND p.created_at >= datetime('now', 'localtime', '-7 days')")]
 
+    n_sel = config.DAILY_SELECT_COUNT
     listing = "\n".join(
         f"{i}. [{c['category']}] {c['keyword']} (골든 {c['golden']:.2f} / 채점 {c['llm_score']:.2f} — {c['reason']})"
         for i, c in enumerate(short))
-    prompt = f"""너는 블로그 주제 선정 오케스트레이터다. 오늘 쓸 주제 2개(selected)와 예비 1개(reserve)를 골라라.
+    prompt = f"""너는 블로그 주제 선정 오케스트레이터다. 오늘 쓸 주제 {n_sel}개(selected)와 예비 1개(reserve)를 골라라.
 
 전략 컨텍스트:
 - 국면: Phase {phase['phase']} — {phase['why']}
-  (Phase 0·1에서는 selected 2개가 **서로 다른 분야**여야 한다 — 분산 탐색 원칙)
+  (Phase 0·1에서는 selected {n_sel}개가 **모두 서로 다른 분야**여야 한다 — 분산 탐색 원칙)
 - 최근 7일 선정 분야 분포: {', '.join(recent_cats) or '없음'} — 쏠린 분야는 피하라
 - 최근 게이트 차단 키워드: {', '.join(gate_skips) or '없음'} — 같은 유형(공식 소스 없는
   여행지·현장 정보류 등) 재선정을 피하라
@@ -200,21 +202,27 @@ def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
 숏리스트 (번호로 응답):
 {listing}
 
-JSON만 출력: {{"selected": [0, 1], "reserve": 2, "rationale": "선정 조합의 이유 (2~3문장)"}}"""
+JSON만 출력: {{"selected": [0, 1, 2], "reserve": 3, "rationale": "선정 조합의 이유 (2~3문장)"}}"""
     raw = llm.chat(config.MODEL_JUDGE, prompt, purpose="topic-orchestration")
     raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     pick = json.loads(raw)
-    sel = [int(i) for i in pick.get("selected", [])][:2]
+    sel = [int(i) for i in pick.get("selected", [])][:n_sel]
     res = int(pick.get("reserve", -1))
-    if len(sel) < 2 or any(not (0 <= i < len(short)) for i in sel + [res]):
+    if len(sel) < n_sel or any(not (0 <= i < len(short)) for i in sel + [res]):
         raise ValueError(f"오케스트레이터 응답 이상: {pick}")
-    # 검증(코드 레벨): Phase 0·1 분야 중복 금지 — LLM이 어겨도 여기서 교정
-    if phase["phase"] < 2 and short[sel[0]]["category"] == short[sel[1]]["category"]:
-        alt = next((i for i, c in enumerate(short)
-                    if i not in sel and c["category"] != short[sel[0]]["category"]), None)
-        if alt is not None:
-            pick["rationale"] += f" [검증기: 분야 중복으로 {short[sel[1]]['keyword']}→{short[alt]['keyword']} 교체]"
-            sel[1] = alt
+    # 검증(코드 레벨): Phase 0·1 분야 중복 금지 — LLM이 어겨도 여기서 교정.
+    # 앞에서부터 확정하며, 이미 쓴 분야가 다시 나오면 미사용 분야 후보로 교체한다.
+    if phase["phase"] < 2:
+        used_cats: set[str] = set()
+        for k in range(len(sel)):
+            if short[sel[k]]["category"] in used_cats:
+                alt = next((i for i, c in enumerate(short)
+                            if i not in sel and c["category"] not in used_cats), None)
+                if alt is not None:
+                    pick["rationale"] += (f" [검증기: 분야 중복으로 "
+                                          f"{short[sel[k]]['keyword']}→{short[alt]['keyword']} 교체]")
+                    sel[k] = alt
+            used_cats.add(short[sel[k]]["category"])
     return {"selected": sel, "reserve": res, "rationale": pick.get("rationale", "")}
 
 
@@ -234,15 +242,16 @@ def discover(conn: sqlite3.Connection | None = None) -> list[dict]:
         top = score_llm(candidates[:LLM_CANDIDATES])
         top.sort(key=lambda c: (-c["llm_score"], -c["golden"]))
 
-        # 최종 선정 — 오케스트레이터 (실패 시 결정론 폴백: 분야 중복 없는 상위 2+1)
+        # 최종 선정 — 오케스트레이터 (실패 시 결정론 폴백: 분야 중복 없는 상위 3+1)
+        n_sel = config.DAILY_SELECT_COUNT
         short = shortlist(top)
         try:
             pick = orchestrate_selection(conn, short)
         except Exception as e:
             print(f"오케스트레이터 실패 — 결정론 폴백: {type(e).__name__}: {e}")
-            fallback = shortlist(top, size=3, per_cat=1)
-            pick = {"selected": [short.index(c) for c in fallback[:2]],
-                    "reserve": short.index(fallback[2]) if len(fallback) > 2 else -1,
+            fallback = [c for c in shortlist(top, size=n_sel + 1, per_cat=1) if c in short]
+            pick = {"selected": [short.index(c) for c in fallback[:n_sel]],
+                    "reserve": short.index(fallback[n_sel]) if len(fallback) > n_sel else -1,
                     "rationale": "오케스트레이터 실패 — 분야 중복 없는 점수 상위 폴백"}
 
         chosen = {short[i]["keyword"]: "selected" for i in pick["selected"]}
