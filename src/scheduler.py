@@ -141,7 +141,8 @@ def _publish(post_id: int):
     """C3 — 예약된 발행 실행."""
     result = publisher.publish(post_id)
     mark = "✅ 실게시 확인" if result["status"] == "verified" else "⚠️ 게시 확인 실패 — 수동 확인"
-    notify.send(f"📝 발행 완료 ({mark})\n{result['url']}")
+    warn = f"\n⚠️ {result['category_warn']}" if result.get("category_warn") else ""
+    notify.send(f"📝 발행 완료 ({mark}){warn}\n{result['url']}")
 
 
 def job_metrics():

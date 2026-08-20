@@ -165,40 +165,46 @@ def _verify_public(url: str) -> bool:
             browser.close()
 
 
-def _select_category_and_subject(page, category: str) -> None:
+def _select_category_and_subject(page, category: str) -> str:
     """발행 팝업에서 카테고리(분야명 동일 카테고리)와 주제를 지정한다.
 
-    카테고리가 없거나 UI가 어긋나면 조용히 기본값으로 발행한다 — 치명 요소가 아님.
+    반환: 선택 후 드롭다운 버튼에 실제 표시된 카테고리명 (반영 검증용 — 호출자가
+    목표와 비교해 미일치 시 알린다). UI가 어긋나면 기본값 그대로 발행 — 치명 요소가 아님.
+
+    2026-08-21 재작성: 기존 휴리스틱("publish 근처의 짧은 텍스트 버튼")은 실발행에서
+    한 번도 작동하지 않아 전 글이 기본 카테고리(여행)로 발행됐다 (mistakes.md).
+    정찰로 확보한 실셀렉터 사용: 버튼 aria-label='카테고리 목록 버튼',
+    항목은 드롭다운 안의 정확 일치 label (role=button).
     """
-    # ① 카테고리: '카테고리' 라벨 다음의 드롭다운 버튼 열기 → 이름 일치 항목 클릭
+    shown = ""
+    # ① 카테고리: 드롭다운 열기 → 정확 일치 라벨 클릭 → 버튼 표시 텍스트로 검증
     try:
-        page.evaluate(
-            """(cat) => {
-                const all = [...document.querySelectorAll('button')];
-                // 발행 팝업 안 카테고리 드롭다운: 현재 카테고리명이 적힌 버튼
-                const dd = all.find(b => b.offsetParent !== null &&
-                    b.closest('[class*="publish"], [class*="option"]') &&
-                    b.textContent.trim().length < 20 &&
-                    !['발행','현재','예약','확인'].includes(b.textContent.trim()));
-                if (!dd) return 'no-dropdown';
-                dd.click();
+        opened = page.evaluate(
+            """() => {
+                const btn = document.querySelector("button[aria-label='카테고리 목록 버튼']");
+                if (!btn) return 'no-button';
+                btn.click();
                 return 'opened';
-            }""", category)
-        time.sleep(0.8)
-        page.evaluate(
-            """(cat) => {
-                const item = [...document.querySelectorAll('label, li, button, span')]
-                    .find(e => e.offsetParent !== null && e.textContent.trim() === cat);
-                if (item) item.click();
-            }""", category)
-        time.sleep(0.5)
+            }""")
+        if opened == "opened":
+            time.sleep(0.8)
+            page.evaluate(
+                """(cat) => {
+                    const label = [...document.querySelectorAll('label')]
+                        .find(l => l.offsetParent !== null && l.textContent.trim() === cat);
+                    if (label) label.click();
+                }""", category)
+            time.sleep(0.8)
+        shown = page.evaluate(
+            """() => document.querySelector("button[aria-label='카테고리 목록 버튼']")
+                     ?.textContent.trim() || ''""")
     except Exception:
         pass
 
     # ② 주제: '주제 선택 안 함 >' 링크 → 매핑된 주제 라벨 → 확인
     subject = NAVER_SUBJECT_BY_FIELD.get(category)
     if not subject:
-        return
+        return shown
     try:
         opened = page.evaluate(
             """() => {
@@ -209,7 +215,7 @@ def _select_category_and_subject(page, category: str) -> None:
                 return 'opened';
             }""")
         if opened != "opened":
-            return
+            return shown
         time.sleep(0.8)
         page.evaluate(
             """(subj) => {
@@ -223,6 +229,7 @@ def _select_category_and_subject(page, category: str) -> None:
         time.sleep(0.5)
     except Exception:
         pass
+    return shown
 
 
 def publish(post_id: int, conn: sqlite3.Connection | None = None, *,
@@ -322,8 +329,13 @@ def publish(post_id: int, conn: sqlite3.Connection | None = None, *,
 
                 # 카테고리 선택 — 분야명과 같은 카테고리가 있으면 지정 (없으면 기본 유지)
                 # 주제 지정 — 분야→네이버 주제 매핑 (실패해도 발행은 진행)
+                # 선택 후 표시값을 검증해 미일치면 결과에 경고를 싣는다 (8/19~20 전 글이
+                # 기본 카테고리로 발행된 사고의 항체 — 조용한 실패 금지)
+                category_warn = None
                 if category:
-                    _select_category_and_subject(page, category)
+                    shown = _select_category_and_subject(page, category)
+                    if shown != category:
+                        category_warn = f"카테고리 미반영 (목표 {category} / 실제 {shown or '기본값'})"
 
                 # 태그 입력 (선택)
                 for tag in (tags or [])[:5]:
@@ -371,8 +383,9 @@ def publish(post_id: int, conn: sqlite3.Connection | None = None, *,
                 "UPDATE posts SET status='verified', verified_at=datetime('now', 'localtime') "
                 "WHERE id=?", (post_id,))
             conn.commit()
-            return {"status": "verified", "url": url}
-        return {"status": "published", "url": url}  # 검증 실패 — 호출자가 알림 (재시도 금지)
+            return {"status": "verified", "url": url, "category_warn": category_warn}
+        # 검증 실패 — 호출자가 알림 (재시도 금지)
+        return {"status": "published", "url": url, "category_warn": category_warn}
     finally:
         if own:
             conn.close()
