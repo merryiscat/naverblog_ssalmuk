@@ -44,6 +44,17 @@ journalctl -u naverblog -f          # 로그 팔로우
 # 텔레그램에 "🟢 파이프라인 상주 시작" 도착하면 성공
 ```
 
+## 앱 로그 (journald) — 2026-08-22 정비
+
+- 앱 로그는 stdout → journald로 남는다. 과거 로그가 안 남던 원인은 비TTY
+  블록 버퍼링 — 유닛의 `Environment=PYTHONUNBUFFERED=1` + scheduler의
+  line_buffering 이중 방어로 수정 (둘 중 하나만 있어도 동작).
+- **journald 영속 확인 (1회)**: 서버에서 `ls /var/log/journal` — 디렉토리가 없으면
+  journald가 휘발성 모드라 재부팅 시 로그가 사라진다. 없으면:
+  `sudo mkdir -p /var/log/journal && sudo systemctl restart systemd-journald`
+- 조회: `journalctl -u naverblog --since today` / 스킵 사유는 DB에서
+  `SELECT title, skip_reason FROM posts WHERE status='skipped'`
+
 ## ⚠️ 단일 운영 원칙 (이중 발행 방지)
 
 배포 후 **운영 상태(DB·발행)는 서버가 단일 출처**다. 개발 PC에서 run_publisher /
