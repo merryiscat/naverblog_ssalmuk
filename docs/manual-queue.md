@@ -12,6 +12,7 @@
 
 | 작업 | 방법 | 배경 |
 |------|------|------|
+| systemd 유닛에 PYTHONUNBUFFERED=1 반영 (선택 — 이중 방어의 한쪽) | 개발 PC에서: `ssh -t merryiscat@192.168.50.205 "sudo sed -i '/Environment=TZ/a Environment=PYTHONUNBUFFERED=1' /etc/systemd/system/naverblog.service && sudo systemctl daemon-reload && sudo systemctl restart naverblog"` | 로그 유실 수정(08-22)의 유닛 쪽 절반 — sudo 비밀번호 필요해 수동. 코드 쪽(line_buffering)만으로 이미 동작 확인됨이라 급하지 않음 |
 | 모바일앱 커버 이미지 등록 (선택) | 블로그 관리 → 기본 설정 → 블로그 정보 → 모바일앱 커버 이미지 등록 | 프로필 이미지처럼 구식 팝업 업로더라 자동화 제외. 검수 에이전트가 지적하면 우선순위 상승 |
 | 공지글/대표글 지정 (선택) | 발행 글 중 안내 성격 글을 공지로 고정, 대표글 설정 | 검수 오케스트레이터 manual 분류(08-21) — "전문성 신호 보강". 액션 카탈로그 v2 후보이기도 함 |
 
