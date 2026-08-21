@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from src import competitors, config, db, inspector, mate_observer, metrics, notify, orchestrator, publisher, steering, topics, writer
+from src import competitors, config, db, inspector, mate_observer, metrics, notify, orchestrator, publisher, resolver, steering, topics, writer
 from src.guardrails import GuardrailViolation
 
 PUBLISH_WINDOW = (11, 21)  # 발행 예약 창 (시)
@@ -61,9 +61,12 @@ def job_generate():
     상주 프로세스가 재시작돼도 예약이 증발하지 않는다 (2026-08-19 버그 수정).
     실제 발행은 job_publish_due 폴러가 집어간다.
 
-    게이트 탈락으로 구멍이 나면 오늘의 예비(reserve) 주제를 selected로 승격해
-    한 번 더 시도한다 — 기본 3건("3+α"의 3)을 지향 (2026-08-20 사용자 결정.
-    8/20 유튜브 프리미엄 게이트 탈락으로 일 1건만 발행된 것이 계기).
+    게이트 탈락으로 구멍이 나면 오늘의 예비(reserve)를 selected로 승격해 보충한다.
+    2026-08-22 사용자 결정("하루 2건은 실제로 올라가야 한다"):
+      - 예비 2건(RESERVE_COUNT), 총 시도 상한 5건(GENERATE_MAX_ATTEMPTS)
+      - 사이클 종료 시 결과를 텔레그램 요약 1건으로 통보 — 탈락 사유 포함
+      - 합격이 목표(DAILY_PUBLISH_TARGET=2) 미만이면 소환(사람 개입) —
+        8/21 게이트 전멸(발행 0건)이 무통보로 지나간 사고의 항체
     """
     conn = db.connect()
     try:
@@ -71,14 +74,18 @@ def job_generate():
             "SELECT * FROM topics WHERE status = 'selected' "
             "AND date = date('now', 'localtime')").fetchall()]
         publish_times = _random_publish_times(len(queue))
-        gated = 0
-        while queue:
+        passed, skipped = [], []   # 합격/탈락 결과 — 종료 시 요약 통보 재료
+        promoted, attempts = 0, 0
+        while queue and attempts < config.GENERATE_MAX_ATTEMPTS:
+            attempts += 1
             topic = queue.pop(0)
             result = writer.generate(topic, conn)
             if result["status"] != "gated":
                 print(f"생성 스킵: {topic['keyword']} — {result.get('reason')}")
+                skipped.append({"keyword": topic["keyword"],
+                                "reason": result.get("reason", "")})
                 # 예비 투입 — 오늘 reserve 하나를 승격해 대기열 뒤에 붙인다
-                # (승격분도 탈락하면 예비가 더 없어 그대로 끝 — 재시도 무한루프 없음)
+                # (예비가 다 떨어지면 그대로 끝 — 시도 상한이 무한루프를 막는다)
                 res = conn.execute(
                     "SELECT * FROM topics WHERE status = 'reserve' "
                     "AND date = date('now', 'localtime') LIMIT 1").fetchone()
@@ -87,15 +94,36 @@ def job_generate():
                                  (res["id"],))
                     conn.commit()
                     queue.append(dict(res))
+                    promoted += 1
                     print(f"예비 투입: {res['keyword']} — {topic['keyword']} 탈락 대체")
                 continue
-            when = (publish_times[gated] if gated < len(publish_times)
+            when = (publish_times[len(passed)] if len(passed) < len(publish_times)
                     else datetime.now() + timedelta(minutes=random.randint(30, 90)))
             conn.execute("UPDATE posts SET scheduled_at = ? WHERE id = ?",
                          (when.strftime("%Y-%m-%d %H:%M:%S"), result["post_id"]))
             conn.commit()
-            gated += 1
+            passed.append({"post_id": result["post_id"], "title": result["title"],
+                           "when": when})
             print(f"발행 예약: [{result['post_id']}] {result['title'][:30]} → {when:%H:%M}")
+
+        # ── 사이클 종료 요약 통보 (건별 스팸 대신 1건 — 전멸·미달은 소환) ──
+        lines = [f"✍️ 생성 사이클 결과 {datetime.now():%m/%d} — "
+                 f"합격 {len(passed)} / 시도 {attempts}"
+                 + (f" (예비 투입 {promoted})" if promoted else "")]
+        for p in passed:
+            lines.append(f"✅ [{p['post_id']}] {p['title'][:35]} → {p['when']:%H:%M} 발행 예약")
+        for s in skipped[:5]:  # 텔레그램 4096자 제한 — 5건 초과는 접는다
+            lines.append(f"⏭️ {s['keyword']} — {s['reason'][:120]}")
+        if len(skipped) > 5:
+            lines.append(f"⏭️ 외 {len(skipped) - 5}건 (posts.skip_reason 참조)")
+        if attempts == 0:
+            notify.summon("오늘 selected 주제가 없음 — 04시 주제 발굴 실패 여부 확인 필요")
+        elif len(passed) < config.DAILY_PUBLISH_TARGET:
+            # 전멸(0건) 또는 목표 미달 — 침묵 대신 소환으로 강하게 알린다
+            notify.summon(f"생성 사이클 목표 미달 — 합격 {len(passed)}건 "
+                          f"(목표 {config.DAILY_PUBLISH_TARGET}건)\n" + "\n".join(lines[1:]))
+        else:
+            notify.send("\n".join(lines))
     finally:
         conn.close()
 
@@ -116,7 +144,9 @@ def job_publish_due():
             overdue_h = (datetime.now()
                          - datetime.fromisoformat(row["scheduled_at"])).total_seconds() / 3600
             if overdue_h > 24:
-                conn.execute("UPDATE posts SET status = 'skipped' WHERE id = ?", (row["id"],))
+                conn.execute(
+                    "UPDATE posts SET status = 'skipped', "
+                    "skip_reason = '예약 24시간 초과 (신선도 보호)' WHERE id = ?", (row["id"],))
                 conn.commit()
                 notify.send(f"⏭️ 예약 24시간 초과로 발행 취소 (신선도 보호): {row['title'][:40]}")
                 continue
@@ -206,6 +236,7 @@ def job_inspector():
           f"정기 실패 {len(fails)}건 / 발굴 {len(report.get('issues', []))}건 (반복 {len(persisting)}건)")
 
     # 검수 직후 오케스트레이션 — 정기 실패든 발굴이든 지적이 있을 때만
+    cur = None
     if report.get("issues") or fails:
         try:
             cur = orchestrator.curate(report)
@@ -222,6 +253,28 @@ def job_inspector():
         except Exception as e:
             notify.send(f"⚠️ 검수 오케스트레이터 오류: {type(e).__name__}: {e}")
             traceback.print_exc()
+
+    # 해결 루프 — 반복 지적을 지적으로 끝내지 않는다 (2026-08-22 사용자 결정).
+    # ①지난 시도의 효과를 이번 검수로 판정 ②이번 persisting을 진단·시도.
+    # 실패해도 검수·오케스트레이션 기록에 영향 없게 별도 try로 분리.
+    try:
+        conn = db.connect()
+        try:
+            outcome_lines = resolver.update_outcomes(report, conn)
+            res = resolver.try_resolve(report, (cur or {}).get("actions", []), conn)
+        finally:
+            conn.close()
+        if outcome_lines or res["lines"]:
+            msg = ["🔧 반복 지적 해결 루프"]
+            if outcome_lines:
+                msg.append("🧪 지난 시도 판정: " + " / ".join(outcome_lines))
+            msg += res["lines"]
+            notify.send("\n".join(msg))
+        print(f"[{datetime.now():%H:%M}] 해결 루프: 판정 {len(outcome_lines)}건, "
+              f"시도 {len(res['lines'])}건")
+    except Exception as e:
+        notify.send(f"⚠️ 해결 루프 오류: {type(e).__name__}: {e}")
+        traceback.print_exc()
 
 
 def job_manual_queue():
@@ -246,6 +299,14 @@ def job_manual_queue():
         # 마크다운 장식 제거 — [텍스트](링크) → 텍스트, ** 제거
         name = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", cells[0]).replace("**", "")
         items.append(name)
+    # 해결 루프가 수동 전환(gave_up)한 지적 합산 — DB가 원본 (2026-08-22).
+    # 서버가 md 파일에 쓰면 배포 시 덮여 유실되므로 파일 대신 DB에서 읽는다.
+    conn = db.connect()
+    try:
+        for m in resolver.pending_manuals(conn):
+            items.append(f"[해결루프 포기] {m['issue_text'][:40]} — {m['instruction'][:60]} ({m['date']})")
+    finally:
+        conn.close()
     if items:
         notify.send(f"🗒️ 주간 수동 작업 대기열 ({len(items)}건)\n"
                     + "\n".join(f"· {i}" for i in items)
@@ -309,7 +370,11 @@ def build(scheduler: BlockingScheduler) -> BlockingScheduler:
 
 
 def main():
-    sys.stdout.reconfigure(encoding="utf-8")  # Windows 콘솔 한글 깨짐 방지
+    # 인코딩(Windows 한글) + 줄 단위 버퍼링 — systemd 비TTY에서 print가 블록 버퍼에
+    # 갇혀 journalctl에 안 나오던 로그 유실의 수정 (2026-08-22 실측).
+    # 유닛 파일의 PYTHONUNBUFFERED=1과 이중 방어 (유닛 미갱신 서버 대비).
+    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
+    sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)  # traceback도 즉시 배출
     scheduler = build(BlockingScheduler(timezone="Asia/Seoul"))
     if "--dry" in sys.argv:
         print("등록된 하루 일과:")

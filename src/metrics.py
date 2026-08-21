@@ -17,11 +17,11 @@ import re
 import sqlite3
 import time
 import urllib.request
-from datetime import date
+from datetime import date, datetime
 
 from playwright.sync_api import sync_playwright
 
-from src import config, db
+from src import config, db, notify
 from src.naver_api import openapi_search
 
 MY_BLOG_PREFIX = f"blog.naver.com/{config.NAVER_BLOG_ID}"
@@ -96,6 +96,25 @@ def check_rank(keyword: str) -> int | None:
     return None
 
 
+def check_indexed(title: str) -> bool:
+    """제목 검색으로 색인 여부를 판정한다 — 순위(check_rank)와 별개 (2026-08-22).
+
+    rank=None은 '미색인'과 '30위 밖'을 구분하지 못한다. 글 제목은 사실상 고유
+    문자열이므로 제목 검색 결과에 내 글이 나오면 색인된 것으로 본다.
+    발행→색인 래그 실측(first_indexed_at)의 근거.
+    """
+    try:
+        # 따옴표 구문 검색 우선 (정확 일치) — 미지원·무결과면 일반 검색 폴백
+        for q in (f'"{title}"', title[:50]):
+            items = openapi_search("blog", q, display=30).get("items", [])
+            if any(MY_BLOG_PREFIX in i.get("link", "") for i in items):
+                return True
+        return False
+    except Exception as e:
+        print(f"색인 확인 실패 (측정은 계속): {type(e).__name__}: {e}")
+        return False
+
+
 def check_ai_cited(page, keyword: str) -> dict:
     """검색 페이지에서 AI 브리핑 유무 + 내 블로그 인용 여부를 관찰한다.
 
@@ -137,7 +156,8 @@ def collect(conn: sqlite3.Connection | None = None) -> dict:
     today = date.today().isoformat()
     try:
         posts = conn.execute(
-            "SELECT p.id, p.publish_url, t.keyword FROM posts p "
+            "SELECT p.id, p.title, p.publish_url, p.published_at, p.first_indexed_at, "
+            "t.keyword FROM posts p "
             "LEFT JOIN topics t ON p.topic_id = t.id "
             "WHERE p.status = 'verified'"
         ).fetchall()
@@ -157,11 +177,38 @@ def collect(conn: sqlite3.Connection | None = None) -> dict:
                         continue
                     rank = check_rank(kw)
                     cited = check_ai_cited(page, kw)
+
+                    # 색인 판정 — 아직 미확인 글만 제목 검색. 최초 확인 시
+                    # first_indexed_at 기록 + 발행→색인 래그를 텔레그램으로 (2026-08-22)
+                    indexed = 1 if post["first_indexed_at"] else 0
+                    if not indexed and post["title"] and check_indexed(post["title"]):
+                        indexed = 1
+                        conn.execute(
+                            "UPDATE posts SET first_indexed_at = datetime('now', 'localtime') "
+                            "WHERE id = ?", (post["id"],))
+                        lag = ""
+                        if post["published_at"]:
+                            days = (datetime.now()
+                                    - datetime.fromisoformat(post["published_at"])).days
+                            lag = f" (발행 후 {days}일)"
+                        notify.send(f"🔎 검색 색인 확인: {post['title'][:40]}{lag}")
+
+                    # 최초 인용은 Phase 전환 트리거 — 침묵 금지, 즉시 알림 (2026-08-22)
+                    if cited.get("cited"):
+                        prior = conn.execute(
+                            "SELECT COUNT(*) AS n FROM rankings "
+                            "WHERE post_id = ? AND ai_cited = 1", (post["id"],)).fetchone()["n"]
+                        if prior == 0:
+                            notify.send(f"🎉 AI 브리핑 인용 확인! '{kw}'\n"
+                                        f"{post['title'][:40]}\n"
+                                        f"(Phase 전환 트리거 — 오늘 밤 보정에 반영됨)")
+
                     conn.execute(
-                        "INSERT OR REPLACE INTO rankings (post_id, date, keyword, rank, ai_cited) "
-                        "VALUES (?, ?, ?, ?, ?)",
-                        (post["id"], today, kw, rank, 1 if cited.get("cited") else 0))
-                    ranks.append({"keyword": kw, "rank": rank, **cited})
+                        "INSERT OR REPLACE INTO rankings "
+                        "(post_id, date, keyword, rank, ai_cited, indexed) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        (post["id"], today, kw, rank, 1 if cited.get("cited") else 0, indexed))
+                    ranks.append({"keyword": kw, "rank": rank, "indexed": bool(indexed), **cited})
                     time.sleep(3)  # 검색 페이지 관찰 간격 (사람 같은 속도)
             finally:
                 browser.close()

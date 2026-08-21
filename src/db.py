@@ -10,6 +10,7 @@
   competitors — AI 브리핑에 인용된 경쟁 글 관찰 (C6)
   mate_watch  — 메이트 관찰 에이전트의 주간 조사 보고 (C7)
   inspections — 블로그 검수 에이전트의 화면 검수 보고 (주 3회, 복기 추적 포함)
+  resolution_attempts — 반복 지적(persisting)에 대한 자동 해결 시도 이력 (resolver)
   costs       — 모든 LLM·이미지 호출 비용 원장 (가드레일 ②의 근거 데이터)
 """
 
@@ -106,6 +107,20 @@ CREATE TABLE IF NOT EXISTS inspections (
     created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS resolution_attempts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    date        TEXT NOT NULL,
+    issue_key   TEXT NOT NULL,              -- 지적 식별 키 (진단 LLM이 부여·재사용, 예: 'thumb-uniform')
+    issue_text  TEXT NOT NULL,              -- 지적 원문 (검수 보고 문구)
+    diagnosis   TEXT,                       -- 원인 진단 (LLM)
+    approach    TEXT NOT NULL,              -- 'catalog'(액션) / 'policy'(정책 힌트) / 'manual'(수동 전환)
+    attempt_json TEXT NOT NULL,             -- 실행한 액션·정책 힌트·수동 지시서 상세 (JSON)
+    result      TEXT NOT NULL DEFAULT 'tried',
+                -- tried(시도) / verified(다음 검수에서 해결 확인) / failed(여전히 반복)
+                -- / gave_up(2회 실패 또는 자동 불가 — 수동 전환, 재시도 중단)
+    created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS costs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     ts          TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
@@ -154,4 +169,19 @@ def _migrate(conn: sqlite3.Connection) -> None:
         # 발행 예약 시각 — 메모리(DateTrigger) 예약은 재시작 시 증발하는 버그가 있어
         # DB 영속 큐로 전환 (2026-08-19). 발행 폴러가 이 시각이 지난 gated 글을 집는다
         conn.execute("ALTER TABLE posts ADD COLUMN scheduled_at TEXT")
+        conn.commit()
+    if "skip_reason" not in post_cols:
+        # 스킵 사유 한 줄 — 게이트 탈락/리서치 부족/예약 초과를 구분해 남긴다
+        # (2026-08-22: 8/21 게이트 전멸이 무통보로 지나간 사고의 항체 — 사유 가시화)
+        conn.execute("ALTER TABLE posts ADD COLUMN skip_reason TEXT")
+        conn.commit()
+    if "first_indexed_at" not in post_cols:
+        # 네이버 블로그 검색에 처음 색인 확인된 시각 — 발행→색인 래그 실측용
+        # (rank=None이 '미색인'인지 '30위 밖'인지 구분하는 근거, 2026-08-22)
+        conn.execute("ALTER TABLE posts ADD COLUMN first_indexed_at TEXT")
+        conn.commit()
+    rank_cols = {r["name"] for r in conn.execute("PRAGMA table_info(rankings)")}
+    if "indexed" not in rank_cols:
+        # 그날 색인 여부 (0/1) — 제목 전문 검색으로 판정 (순위와 별개, 2026-08-22)
+        conn.execute("ALTER TABLE rankings ADD COLUMN indexed INTEGER NOT NULL DEFAULT 0")
         conn.commit()

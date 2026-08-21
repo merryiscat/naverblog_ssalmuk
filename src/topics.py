@@ -6,8 +6,10 @@
   ② 검색량 상위 후보만 검색 API로 블로그 문서수 조회 (쿼리 절약)
   ③ 골든키워드 점수 = 월간 검색량 ÷ 문서수 (수요 대비 공급이 빈 곳)
   ④ LLM(판단 모델)이 '정보형 글로 쓸 가치'를 채점 — 골든 점수 상위만 투입
-  ⑤ 최종 3개 selected(config.DAILY_SELECT_COUNT), 다음 1개 reserve로 topics 테이블에 기록
-     (2026-08-20 사용자 결정: 일 기본 3건 + 예비 — 게이트 탈락 시 스케줄러가 예비 투입)
+  ⑤ 최종 3개 selected(config.DAILY_SELECT_COUNT), 다음 2개 reserve(config.RESERVE_COUNT)로
+     topics 테이블에 기록 — 게이트 탈락 시 스케줄러가 예비 투입
+     (2026-08-22 사용자 결정: 정책·지원금형 2 + 탐색 1 부분 특화, 예비 1→2 확대 —
+     "하루 2건은 실제로 올라가야 한다". 8/21 게이트 전멸이 계기)
 """
 
 import json
@@ -18,18 +20,21 @@ from src import config, db, llm
 from src.naver_api import doc_count, keyword_stats
 
 # 네이버 메이트 공식 10개 분야 (보도자료 2026-07-15) — 선정이 분야별로 이뤄지므로
-# 시드를 이 체계에 정렬한다. 분야별 시드 2개는 콜드 스타트용이며,
+# 시드를 이 체계에 정렬한다. 시드는 콜드 스타트용이며,
 # 운영이 시작되면 일일 보정(C5)이 policy로 시드·타깃 분야를 조정한다.
+# 2026-08-22 부분 특화: 라이프·인사이트에 정책·지원금 시드 확대 — 실측 근거:
+# AI 브리핑 신호 2건(소상공인정책자금·희망리턴패키지)이 모두 이 계열,
+# 게이트 통과작도 정책류 위주. 대상별(청년/소상공인/육아/주거) 변형으로 소재 고갈 방지.
 DEFAULT_SEEDS_BY_CATEGORY = {
     "여행": ["국내여행", "해외여행준비물"],
     "푸드": ["맛집추천", "제철음식"],
     "레시피": ["자취요리", "에어프라이어요리"],
     "스타일": ["여름코디", "패션기초"],
     "테크": ["노트북추천", "스마트홈"],
-    "라이프": ["정부지원금", "자취꿀팁"],
+    "라이프": ["정부지원금", "청년지원금", "소상공인지원", "육아지원금", "자취꿀팁"],
     "컬쳐": ["전시회추천", "독서모임"],
     "미디어": ["넷플릭스추천", "드라마정보"],
-    "인사이트": ["재테크기초", "청약방법"],
+    "인사이트": ["재테크기초", "청약방법", "주거지원정책", "고용지원금"],
     "취미": ["캠핑초보", "홈트레이닝"],
 }
 
@@ -185,15 +190,23 @@ def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
         "WHERE p.status = 'skipped' AND p.created_at >= datetime('now', 'localtime', '-7 days')")]
 
     n_sel = config.DAILY_SELECT_COUNT
+    n_res = config.RESERVE_COUNT
     listing = "\n".join(
         f"{i}. [{c['category']}] {c['keyword']} (골든 {c['golden']:.2f} / 채점 {c['llm_score']:.2f} — {c['reason']})"
         for i, c in enumerate(short))
-    prompt = f"""너는 블로그 주제 선정 오케스트레이터다. 오늘 쓸 주제 {n_sel}개(selected)와 예비 1개(reserve)를 골라라.
+    prompt = f"""너는 블로그 주제 선정 오케스트레이터다. 오늘 쓸 주제 {n_sel}개(selected)와 예비 {n_res}개(reserve)를 골라라.
+
+선정 비율 (2026-08-22 사용자 확정 — 부분 특화. 실측 근거: AI 브리핑 신호가
+정책·지원금 계열에서만 관측, 넷플릭스·여행류는 브리핑 자체가 안 뜨는 쿼리):
+- selected {n_sel}개 중 **2개는 정책·지원금형** — 지원금·정책·제도·신청 방법·자격 요건 등
+  시점 의존 정보 수요가 있는 키워드 (분야 무관 — 브리핑이 뜨는 유형이 기준)
+- 나머지 1개는 **탐색** — 정책·지원금형이 아닌 다른 분야에서 (분산 탐색 창 유지)
+- 숏리스트에 정책·지원금형이 2개 미만이면 있는 만큼만 채우고 rationale에 그 사실을 명시
+- reserve {n_res}개도 같은 우선순위로 (정책·지원금형 우선 — 게이트 탈락 시 보충용)
 
 전략 컨텍스트:
 - 국면: Phase {phase['phase']} — {phase['why']}
-  (Phase 0·1에서는 selected {n_sel}개가 **모두 서로 다른 분야**여야 한다 — 분산 탐색 원칙)
-- 최근 7일 선정 분야 분포: {', '.join(recent_cats) or '없음'} — 쏠린 분야는 피하라
+- 최근 7일 선정 분야 분포: {', '.join(recent_cats) or '없음'} — 탐색 슬롯은 쏠린 분야를 피하라
 - 최근 게이트 차단 키워드: {', '.join(gate_skips) or '없음'} — 같은 유형(공식 소스 없는
   여행지·현장 정보류 등) 재선정을 피하라
 - 보정(C5)의 내일 힌트: {json.dumps(hint, ensure_ascii=False)}
@@ -202,27 +215,28 @@ def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
 숏리스트 (번호로 응답):
 {listing}
 
-JSON만 출력: {{"selected": [0, 1, 2], "reserve": 3, "rationale": "선정 조합의 이유 (2~3문장)"}}"""
+JSON만 출력: {{"selected": [0, 1, 2], "reserve": [3, 4], "rationale": "선정 조합의 이유 (2~3문장)"}}"""
     raw = llm.chat(config.MODEL_JUDGE, prompt, purpose="topic-orchestration")
     raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     pick = json.loads(raw)
     sel = [int(i) for i in pick.get("selected", [])][:n_sel]
-    res = int(pick.get("reserve", -1))
-    if len(sel) < n_sel or any(not (0 <= i < len(short)) for i in sel + [res]):
+    # reserve는 배열이 기본이지만 과거 형식(정수 하나)도 받아준다 (LLM 응답 관용)
+    res_raw = pick.get("reserve", [])
+    res = [int(i) for i in (res_raw if isinstance(res_raw, list) else [res_raw])][:n_res]
+    if len(sel) < n_sel or any(not (0 <= i < len(short)) for i in sel + res):
         raise ValueError(f"오케스트레이터 응답 이상: {pick}")
-    # 검증(코드 레벨): Phase 0·1 분야 중복 금지 — LLM이 어겨도 여기서 교정.
-    # 앞에서부터 확정하며, 이미 쓴 분야가 다시 나오면 미사용 분야 후보로 교체한다.
+    # 검증(코드 레벨): Phase 0·1에서 selected 전부가 한 분야로 쏠리는 것만 막는다.
+    # (2026-08-22 완화 — 정책·지원금형 2건이 같은 분야(라이프 등)일 수 있으므로
+    # '모두 다른 분야' 강제를 풀고, 탐색 슬롯 1개의 분야 분리만 보장)
     if phase["phase"] < 2:
-        used_cats: set[str] = set()
-        for k in range(len(sel)):
-            if short[sel[k]]["category"] in used_cats:
-                alt = next((i for i, c in enumerate(short)
-                            if i not in sel and c["category"] not in used_cats), None)
-                if alt is not None:
-                    pick["rationale"] += (f" [검증기: 분야 중복으로 "
-                                          f"{short[sel[k]]['keyword']}→{short[alt]['keyword']} 교체]")
-                    sel[k] = alt
-            used_cats.add(short[sel[k]]["category"])
+        cats = [short[i]["category"] for i in sel]
+        if len(set(cats)) == 1:
+            alt = next((i for i, c in enumerate(short)
+                        if i not in sel and c["category"] != cats[0]), None)
+            if alt is not None:
+                pick["rationale"] += (f" [검증기: 전 슬롯 동일 분야 — "
+                                      f"{short[sel[-1]]['keyword']}→{short[alt]['keyword']} 교체]")
+                sel[-1] = alt
     return {"selected": sel, "reserve": res, "rationale": pick.get("rationale", "")}
 
 
@@ -242,27 +256,31 @@ def discover(conn: sqlite3.Connection | None = None) -> list[dict]:
         top = score_llm(candidates[:LLM_CANDIDATES])
         top.sort(key=lambda c: (-c["llm_score"], -c["golden"]))
 
-        # 최종 선정 — 오케스트레이터 (실패 시 결정론 폴백: 분야 중복 없는 상위 3+1)
+        # 최종 선정 — 오케스트레이터 (실패 시 결정론 폴백: 분야 중복 없는 상위 3+2)
         n_sel = config.DAILY_SELECT_COUNT
+        n_res = config.RESERVE_COUNT
         short = shortlist(top)
         try:
             pick = orchestrate_selection(conn, short)
         except Exception as e:
             print(f"오케스트레이터 실패 — 결정론 폴백: {type(e).__name__}: {e}")
-            fallback = [c for c in shortlist(top, size=n_sel + 1, per_cat=1) if c in short]
+            fallback = [c for c in shortlist(top, size=n_sel + n_res, per_cat=1) if c in short]
             pick = {"selected": [short.index(c) for c in fallback[:n_sel]],
-                    "reserve": short.index(fallback[n_sel]) if len(fallback) > n_sel else -1,
+                    "reserve": [short.index(c) for c in fallback[n_sel:n_sel + n_res]],
                     "rationale": "오케스트레이터 실패 — 분야 중복 없는 점수 상위 폴백"}
 
         chosen = {short[i]["keyword"]: "selected" for i in pick["selected"]}
-        if 0 <= pick["reserve"] < len(short):
-            chosen.setdefault(short[pick["reserve"]]["keyword"], "reserve")
-        # 검증기 교체 등으로 reserve가 selected와 겹쳤으면 다음 후보로 보충
-        if "reserve" not in chosen.values():
-            for c in short:
-                if c["keyword"] not in chosen:
-                    chosen[c["keyword"]] = "reserve"
-                    break
+        for i in pick["reserve"]:
+            if 0 <= i < len(short):
+                chosen.setdefault(short[i]["keyword"], "reserve")
+        # 검증기 교체 등으로 reserve가 selected와 겹치면 다음 후보로 보충 (n_res개 확보)
+        have_res = sum(1 for v in chosen.values() if v == "reserve")
+        for c in short:
+            if have_res >= n_res:
+                break
+            if c["keyword"] not in chosen:
+                chosen[c["keyword"]] = "reserve"
+                have_res += 1
 
         for c in top:
             status = chosen.get(c["keyword"], "candidate")

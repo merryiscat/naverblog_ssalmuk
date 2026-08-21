@@ -114,8 +114,29 @@ def _src_block(research: list[dict], with_url: bool = True) -> str:
     )
 
 
-def write_draft(topic: dict, research: list[dict], feedback: str | None = None) -> str:
-    """초안 작성 — 작문 모델(gpt-4.1)에 템플릿 7요소를 강제한다."""
+def gate_fail_summary(gate: dict) -> str:
+    """게이트 탈락 사유 한 줄 — 텔레그램 통보와 posts.skip_reason이 공용으로 쓴다.
+
+    예: '총점 64.3, 미달: 사실성 48·신선도 55 / 소스에 없는 가격 수치 2건…'
+    (2026-08-22: 8/21 게이트 전멸이 무통보로 지나간 사고의 항체 — 사유 가시화)
+    """
+    names = {"factual": "사실성", "structure": "구조", "deai": "탈AI", "stuffing": "스터핑",
+             "frontload": "두괄식", "specificity": "구체성", "freshness": "신선도"}
+    scores = gate.get("scores", {})
+    # 합격선(70) 아래인 차원을 낮은 순으로 최대 3개 — 무엇이 발목을 잡았는지
+    low = sorted(((k, float(scores.get(k, 0))) for k in names
+                  if float(scores.get(k, 0)) < GATE_PASS_SCORE), key=lambda x: x[1])
+    dims = "·".join(f"{names[k]} {int(v)}" for k, v in low[:3]) or "없음"
+    return f"총점 {gate.get('total')}, 미달: {dims} / {gate.get('feedback', '')[:80]}"
+
+
+def write_draft(topic: dict, research: list[dict], feedback: str | None = None,
+                hint: str | None = None) -> str:
+    """초안 작성 — 작문 모델(gpt-4.1)에 템플릿 7요소를 강제한다.
+
+    hint: 해결 루프(resolver)가 정책에 주입한 작문 지침 — 검수 반복 지적을
+    글 생성 단계에서 교정하는 경로 (있을 때만 프롬프트에 덧붙는다).
+    """
     src_block = _src_block(research)
     # 분야별 조정 (mate-analysis: 테크·인사이트=통계·출처↑, 라이프·푸드·여행=가독성↑)
     tone = ("통계·수치와 출처 인용의 밀도를 높여라"
@@ -156,6 +177,7 @@ def write_draft(topic: dict, research: list[dict], feedback: str | None = None) 
 {src_block}
 
 {f'이전 초안의 게이트 불합격 피드백 — 반드시 고쳐라: {feedback}' if feedback else ''}
+{f'운영 정책 추가 지침 (블로그 검수 반복 지적의 교정 — 반드시 반영): {hint}' if hint else ''}
 
 출력: 첫 줄에 "제목: <제목>", 둘째 줄부터 마크다운 본문."""
     return llm.chat(config.MODEL_WRITER, prompt, purpose="write-draft")
@@ -216,15 +238,20 @@ JSON만 출력:
             "research_query": scores.get("research_query", "")}
 
 
-def make_hero_image(title: str, category: str, stem: str) -> str | None:
+def make_hero_image(title: str, category: str, stem: str,
+                    style_hint: str | None = None) -> str | None:
     """대표 이미지 1장 생성·저장 — 실패해도 글 발행은 계속 (치명 요소 아님).
 
     이미지 안에 글자를 넣지 않는다 — 생성 모델의 한글 렌더링이 불안정해
     깨진 글자가 오히려 신뢰도를 깎는다 (검수 에이전트 지적 사항이기도 함).
+    style_hint: 해결 루프(resolver)가 정책에 주입한 스타일 지침 —
+    썸네일 획일화 같은 반복 지적을 다음 생성부터 교정하는 경로.
     """
     style = ("차분한 파스텔 톤의 미니멀 플랫 일러스트, 블로그 대표 이미지. "
              "글자·텍스트·숫자 절대 없음, 브랜드 로고·상표 절대 없음, "
              "깔끔한 구성, 넉넉한 여백")
+    if style_hint:
+        style += f". 추가 스타일 지침: {style_hint}"
     try:
         img = llm.generate_image(f"{style}. 주제: {title} ({category} 분야)",
                                  purpose="hero-image", size="1536x1024")
@@ -248,12 +275,25 @@ def generate(topic: dict, conn: sqlite3.Connection | None = None) -> dict:
     try:
         research = gather_research(topic["keyword"])
         if len(research) < 3:
-            return {"status": "skipped", "reason": f"리서치 소스 부족 ({len(research)}건 < 3)"}
+            reason = f"리서치 소스 부족 ({len(research)}건 < 3)"
+            # 스킵도 posts에 행을 남긴다 — 사유가 DB에서 조회되게 (2026-08-22)
+            conn.execute(
+                "INSERT INTO posts (topic_id, title, status, skip_reason) "
+                "VALUES (?, ?, 'skipped', ?)",
+                (topic.get("id"), topic["keyword"], reason))
+            conn.commit()
+            return {"status": "skipped", "reason": reason}
+
+        # 해결 루프(resolver)가 정책에 주입한 힌트 — 반복 지적을 생성 단계에서 교정
+        from src.steering import load_policy  # 지연 임포트 (순환 방지)
+        policy = load_policy(conn)
+        writer_hint = policy.get("writer_hint")
+        image_hint = policy.get("image_style_hint")
 
         draft, gate, feedback = "", None, None
         attempts, re_researched = 0, 0
         for attempts in range(1, config.GATE_MAX_RETRIES + 2):  # 최초 1회 + 재시도
-            draft = write_draft(topic, research, feedback)
+            draft = write_draft(topic, research, feedback, hint=writer_hint)
             gate = gate_draft(draft, topic, research)
             if gate["passed"]:
                 break
@@ -269,12 +309,14 @@ def generate(topic: dict, conn: sqlite3.Connection | None = None) -> dict:
         body = "\n".join(draft.splitlines()[1:]).strip()
 
         if not gate["passed"]:
+            reason = f"게이트 {attempts}회 불합격 — {gate_fail_summary(gate)}"
             conn.execute(
-                "INSERT INTO posts (topic_id, title, gate_json, status) VALUES (?, ?, ?, 'skipped')",
-                (topic.get("id"), title, json.dumps(gate, ensure_ascii=False)),
+                "INSERT INTO posts (topic_id, title, gate_json, status, skip_reason) "
+                "VALUES (?, ?, ?, 'skipped', ?)",
+                (topic.get("id"), title, json.dumps(gate, ensure_ascii=False), reason),
             )
             conn.commit()
-            return {"status": "skipped", "reason": f"게이트 {attempts}회 불합격 (총점 {gate['total']})",
+            return {"status": "skipped", "reason": reason,
                     "gate": gate, "attempts": attempts, "re_researched": re_researched}
 
         # 합격 — 본문 파일 저장 + 대표 이미지 + posts 기록 (발행은 C3의 일)
@@ -282,7 +324,8 @@ def generate(topic: dict, conn: sqlite3.Connection | None = None) -> dict:
         safe_kw = re.sub(r"[^\w가-힣]", "_", topic["keyword"])
         body_path = config.POSTS_DIR / f"{today}-{safe_kw}.md"
         body_path.write_text(f"# {title}\n\n{body}", encoding="utf-8")
-        hero = make_hero_image(title, topic.get("category", "일반"), f"{today}-{safe_kw}")
+        hero = make_hero_image(title, topic.get("category", "일반"), f"{today}-{safe_kw}",
+                               style_hint=image_hint)
 
         cur = conn.execute(
             "INSERT INTO posts (topic_id, title, body_path, images_json, gate_json, "

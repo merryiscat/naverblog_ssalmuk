@@ -44,6 +44,17 @@ ACTION_CATALOG = {
     "set_intro": ("프로필 소개글 변경 (한글 200자 이내)", 200),
     "set_subject": (f"내 블로그 주제 변경 — 다음 중 하나만: {', '.join(VALID_SUBJECTS)}", None),
     "make_profile_image": ("프로필 이미지 생성 (업로드는 수동 — 이미지 묘사를 값으로)", 300),
+    # 정책 힌트 2종 (2026-08-22, 해결 루프 v1) — 브라우저 불필요·비파괴.
+    # policy 테이블에 저장되고 writer가 다음 글 생성부터 읽는다 —
+    # 생성물에 대한 반복 지적(문체·썸네일 획일화 등)을 루프가 스스로 교정하는 경로
+    "set_image_style_hint": ("대표 이미지 스타일 힌트를 정책에 주입 — 다음 글 생성부터 반영 (한글 200자)", 200),
+    "set_writer_hint": ("작문 지침 힌트를 정책에 주입 — 다음 글 프롬프트에 추가 (한글 200자)", 200),
+}
+
+# 정책 힌트 액션 → policy 테이블 키 매핑 (writer.generate가 이 키를 읽는다)
+POLICY_HINT_ACTIONS = {
+    "set_image_style_hint": "image_style_hint",
+    "set_writer_hint": "writer_hint",
 }
 
 class ActionError(Exception):
@@ -115,10 +126,30 @@ def apply(actions: list[dict]) -> list[dict]:
         raise ActionError("정적 검증 실패: " + "; ".join(problems))
 
     results = []
-    form_actions = [a for a in actions if a["action"] != "make_profile_image"]
+    non_form = set(POLICY_HINT_ACTIONS) | {"make_profile_image"}
+    form_actions = [a for a in actions if a["action"] not in non_form]
     image_actions = [a for a in actions if a["action"] == "make_profile_image"]
+    policy_actions = [a for a in actions if a["action"] in POLICY_HINT_ACTIONS]
 
-    # ① 이미지 생성 (브라우저 불필요 — 실패해도 폼 액션은 계속)
+    # ①-a 정책 힌트 — 브라우저 불필요, policy 테이블에 저장 (다음 글 생성부터 반영)
+    for a in policy_actions:
+        try:
+            from src import db  # 지연 임포트 (순환 방지)
+            from src.steering import load_policy, save_policy
+            conn = db.connect()
+            try:
+                policy = load_policy(conn)
+                policy[POLICY_HINT_ACTIONS[a["action"]]] = str(a["value"])
+                save_policy(conn, policy)
+            finally:
+                conn.close()
+            results.append({"action": a["action"], "value": a["value"], "ok": True,
+                            "detail": "정책 반영 — 다음 글 생성부터 적용"})
+        except Exception as e:
+            results.append({"action": a["action"], "value": a["value"], "ok": False,
+                            "detail": f"{type(e).__name__}: {e}"})
+
+    # ①-b 이미지 생성 (브라우저 불필요 — 실패해도 폼 액션은 계속)
     for a in image_actions:
         try:
             path = _make_profile_image(str(a["value"]))

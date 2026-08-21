@@ -11,6 +11,8 @@ Type=simple
 User=CHANGEME
 WorkingDirectory=/home/CHANGEME/naverblog_ssalmuk
 Environment=TZ=Asia/Seoul
+# 비TTY에서 python print가 블록 버퍼에 갇혀 journalctl에 로그가 안 남던 문제 수정 (2026-08-22)
+Environment=PYTHONUNBUFFERED=1
 ExecStart=/home/CHANGEME/.local/bin/uv run python -m src.scheduler
 Restart=always
 RestartSec=30
