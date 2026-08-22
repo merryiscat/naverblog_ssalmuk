@@ -132,11 +132,13 @@ def gate_fail_summary(gate: dict) -> str:
                   if float(scores.get(k, 0)) < GATE_PASS_SCORE), key=lambda x: x[1])
     parts = []
     for k, v in low[:3]:
-        why = str(reasons.get(k) or reasons.get(names[k]) or "").strip()
-        parts.append(f"{names[k]} {int(v)}" + (f" — {why[:90]}" if why else ""))
+        # 사유는 자르지 않는다 — 문장 중간 절단이 "잘려서 옴" 보고의 원인이었다.
+        # 길이는 텔레그램 분할 발송이 처리하고, 극단 케이스만 300자 안전망
+        why = str(reasons.get(k) or reasons.get(names[k]) or "").strip()[:300]
+        parts.append(f"{names[k]} {int(v)}" + (f" — {why}" if why else ""))
     dims = "\n  · ".join(parts) or "없음 (총점 미달)"
     return (f"총점 {gate.get('total')}, 미달 차원:\n  · {dims}\n"
-            f"  종합: {gate.get('feedback', '')[:200]}")
+            f"  종합: {gate.get('feedback', '')[:300]}")
 
 
 def write_draft(topic: dict, research: list[dict], feedback: str | None = None,
