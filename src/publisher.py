@@ -47,18 +47,53 @@ def md_to_html(body_md: str) -> str:
     return html.replace("<h1>", "<h2>").replace("</h1>", "</h2>")
 
 
+def _source_label(s: dict) -> str:
+    """출처 표기용 매체명 — 도메인(www 제거)을 쓰고, 없으면 제목 앞부분."""
+    from urllib.parse import urlparse
+    d = urlparse(s.get("url", "")).netloc.replace("www.", "")
+    return d or (s.get("title", "") or "")[:20]
+
+
+def _footnotes_to_labels(body_md: str, sources: list[dict]) -> str:
+    """본문의 각주 번호 [n]을 매체명 표기로 변환한다 (2026-08-22).
+
+    검수 반복 지적 "각주 [1][3][11]이 실링크 없이 원시 텍스트로 노출"의 근본 수정 —
+    독자에겐 번호가 무의미하고, GEO 원칙상 출처 '신호'는 유지해야 하므로
+    번호를 지우는 대신 "(출처: 도메인)"으로 바꾼다. 연속 각주는 하나로 뭉친다.
+    """
+    def run_to_label(match: re.Match) -> str:
+        labels = []
+        for n in re.findall(r"\[(\d+)\]", match.group(0)):
+            i = int(n) - 1
+            if 0 <= i < len(sources):
+                lb = _source_label(sources[i])
+                if lb and lb not in labels:
+                    labels.append(lb)
+        if not labels:
+            return ""  # 매칭되는 소스가 없는 번호는 그냥 제거
+        tail = " 외" if len(labels) > 2 else ""
+        return "(출처: " + ", ".join(labels[:2]) + tail + ")"
+
+    # ① "(출처: [3])"·"(출처: [1], [4])" 형태 — 괄호째 매체명으로 치환
+    body = re.sub(r"\(출처:\s*(?:\[\d+\][,\s]*)+\)", run_to_label, body_md)
+    # ② 남은 bare 각주 런 "[1][3][11]" — 하나의 출처 표기로 축약
+    body = re.sub(r"(?:\[\d+\])+", run_to_label, body)
+    return body
+
+
 def build_final_body(body_md: str, sources: list[dict]) -> str:
-    """본문의 출처 각주 [n]을 유지하고, 말미에 '참고 자료' 절을 붙인다.
+    """본문 각주 [n]을 매체명 표기로 바꾸고, 말미에 '참고 자료' 절을 붙인다.
 
     공식 가이드 원칙 3(원작자·원문 링크 명시) 대응. 링크 텍스트로 URL을 그대로 적는다.
     """
     if not sources:
         return body_md
+    body = _footnotes_to_labels(body_md, sources)
     lines = ["", "## 참고 자료", ""]
-    for i, s in enumerate(sources):
-        lines.append(f"[{i+1}] {s['title']} — {s['url']}")
+    for s in sources:
+        lines.append(f"- {s['title']} — {s['url']}")
         lines.append("")
-    return body_md + "\n" + "\n".join(lines)
+    return body + "\n" + "\n".join(lines)
 
 
 def _shot(page, name: str) -> str:
