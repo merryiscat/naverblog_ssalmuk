@@ -31,7 +31,9 @@ FRESHNESS_PASS_SCORE = 60
 # 이 나이(일)를 넘은 소스는 프롬프트에 '낡음'으로 표시해 중심 근거 사용을 막는다
 STALE_DAYS = 365
 # 왕복 루프에서 재리서치 최대 횟수 (LLM이 무한 재리서치를 지시하지 못하게)
-RE_RESEARCH_MAX = 1
+# 2026-08-22 1→2 상향: 소스 부실형 탈락(소상공인지원금 — 지자체 기사만 잡힘)에
+# 재리서치 1회로는 부족했던 실측 반영
+RE_RESEARCH_MAX = 2
 
 # 去AI味 — 네이버 블로그에서 'AI 티'로 읽히는 상투 표현들 (게이트가 감점)
 AI_CLICHES = ["결론적으로", "종합해보면", "~하는 것이 중요합니다", "알아보도록 하겠습니다",
@@ -115,19 +117,26 @@ def _src_block(research: list[dict], with_url: bool = True) -> str:
 
 
 def gate_fail_summary(gate: dict) -> str:
-    """게이트 탈락 사유 한 줄 — 텔레그램 통보와 posts.skip_reason이 공용으로 쓴다.
+    """게이트 탈락 사유 — 텔레그램 통보와 posts.skip_reason이 공용으로 쓴다.
 
-    예: '총점 64.3, 미달: 사실성 48·신선도 55 / 소스에 없는 가격 수치 2건…'
-    (2026-08-22: 8/21 게이트 전멸이 무통보로 지나간 사고의 항체 — 사유 가시화)
+    차원별 감점 사유(low_reasons)를 붙여 "무엇이 왜 낮았는지"가 바로 보이게 한다
+    (2026-08-22: '스터핑 55'만 보고 무슨 문제인지 알 수 없던 보고의 개선).
+    전문은 gate_json에 있고, 텔레그램은 분할 발송이라 잘리지 않는다.
     """
-    names = {"factual": "사실성", "structure": "구조", "deai": "탈AI", "stuffing": "스터핑",
+    names = {"factual": "사실성", "structure": "구조", "deai": "AI문체", "stuffing": "키워드반복",
              "frontload": "두괄식", "specificity": "구체성", "freshness": "신선도"}
     scores = gate.get("scores", {})
+    reasons = scores.get("low_reasons") or {}
     # 합격선(70) 아래인 차원을 낮은 순으로 최대 3개 — 무엇이 발목을 잡았는지
     low = sorted(((k, float(scores.get(k, 0))) for k in names
                   if float(scores.get(k, 0)) < GATE_PASS_SCORE), key=lambda x: x[1])
-    dims = "·".join(f"{names[k]} {int(v)}" for k, v in low[:3]) or "없음"
-    return f"총점 {gate.get('total')}, 미달: {dims} / {gate.get('feedback', '')[:80]}"
+    parts = []
+    for k, v in low[:3]:
+        why = str(reasons.get(k) or reasons.get(names[k]) or "").strip()
+        parts.append(f"{names[k]} {int(v)}" + (f" — {why[:90]}" if why else ""))
+    dims = "\n  · ".join(parts) or "없음 (총점 미달)"
+    return (f"총점 {gate.get('total')}, 미달 차원:\n  · {dims}\n"
+            f"  종합: {gate.get('feedback', '')[:200]}")
 
 
 def write_draft(topic: dict, research: list[dict], feedback: str | None = None,
@@ -202,9 +211,18 @@ def gate_draft(draft: str, topic: dict, research: list[dict]) -> dict:
 - stuffing: 키워드 기계 반복이 없고, 제목이 본문 내용과 일치하나 (낚시성 감점)
 - frontload: 첫 문단이 검색 의도에 즉답하나
 - specificity: 모호한 서술 대신 구체 수치·근거가 있나
-- freshness: 오늘({today:%Y-%m-%d}) 발행하기에 정보가 현재적인가?
-  제목·기준 시점에 과거 연도가 달려 있거나("2024년 기준" 등), 중심 근거가
-  ⚠낡음 소스에 의존하거나, 낡은 정보를 최신인 것처럼 서술하면 크게 감점
+- freshness: 오늘({today:%Y-%m-%d}) 발행하기에 정보가 현재적인가? **다음 세 가지만 본다**:
+  ①제목·본문의 기준 시점이 과거 연도로 표기("2024년 기준" 등) ②중심 근거가
+  ⚠낡음(1년+) 소스에 의존 ③낡은 정보를 최신인 것처럼 서술.
+  "공식 소스로 재확인 필요" 같은 사실 신뢰 문제는 factual에서만 감점하라 —
+  freshness에 이중 감점 금지 (셋 다 해당 없으면 freshness는 85 이상)
+
+점수 앵커 — 모든 차원 공통. 구체적인 문제 문장·수치를 지적할 수 없는 차원에
+낮은 점수를 주지 마라 (근거 없는 중간대 점수 금지):
+- 90~100: 그 차원에 감점 요소가 없다
+- 75~89: 사소한 흠 1~2개 (합격권)
+- 60~74: 뚜렷한 문제가 있으나 재작성으로 교정 가능 — low_reasons에 사유 필수
+- 60 미만: 심각 — 그 차원 때문에 발행 불가 — low_reasons에 사유 필수
 
 다음 행동도 지시하라:
 - 합격 수준이면 action: "pass"
@@ -220,8 +238,12 @@ def gate_draft(draft: str, topic: dict, research: list[dict]) -> dict:
 
 JSON만 출력:
 {{"factual": 0, "structure": 0, "deai": 0, "stuffing": 0, "frontload": 0, "specificity": 0,
- "freshness": 0, "action": "pass|rewrite|re_research", "research_query": "",
- "feedback": "불합격 원인과 고칠 점을 구체적으로 (합격이어도 개선점 한 줄)"}}"""
+ "freshness": 0,
+ "low_reasons": {{"75 미만을 준 차원명(영문 키)": "감점 사유 한 줄 — 어떤 문장·수치가 문제인지 구체적으로"}},
+ "action": "pass|rewrite|re_research", "research_query": "",
+ "feedback": "불합격 원인과 고칠 점을 구체적으로 (합격이어도 개선점 한 줄)"}}
+(low_reasons의 사유와 점수는 서로 모순되면 안 된다 — "반복 심하지 않음"이라 쓰고
+낮은 점수를 주는 식 금지. 사유가 없으면 점수를 올려라)"""
     raw = llm.chat(config.MODEL_JUDGE, prompt, purpose="quality-gate")
     raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     scores = json.loads(raw)

@@ -112,8 +112,8 @@ def job_generate():
                  + (f" (예비 투입 {promoted})" if promoted else "")]
         for p in passed:
             lines.append(f"✅ [{p['post_id']}] {p['title'][:35]} → {p['when']:%H:%M} 발행 예약")
-        for s in skipped[:5]:  # 텔레그램 4096자 제한 — 5건 초과는 접는다
-            lines.append(f"⏭️ {s['keyword']} — {s['reason'][:120]}")
+        for s in skipped[:5]:  # 5건 초과만 접는다 — 사유는 자르지 않음 (분할 발송이 처리)
+            lines.append(f"⏭️ {s['keyword']} — {s['reason']}")
         if len(skipped) > 5:
             lines.append(f"⏭️ 외 {len(skipped) - 5}건 (posts.skip_reason 참조)")
         if attempts == 0:
