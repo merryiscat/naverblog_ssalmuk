@@ -11,7 +11,8 @@
   화·금 15:00  경쟁·공백 관찰 (C6)
   일 16:00    메이트 관찰 에이전트 (C7)
   화·목·토 23:15  블로그 검수 에이전트 (실화면 비전 검수 + 복기)
-                  → 직후 검수 오케스트레이터가 결정, 수행 에이전트가 블로그 설정 반영
+                  → 직후 오케스트레이터(관리자)가 작업 지시 — 실행 에이전트
+                    (blog_actions=설정·정책 힌트, post_editor=기발행 글 수정)가 반영
 
 모든 작업은 실패해도 스케줄러가 죽지 않는다 — 예외는 텔레그램으로 알리고 다음 주기를 기다린다.
 실행: uv run python -m src.scheduler  (--dry: 스케줄만 출력하고 종료)
@@ -235,46 +236,42 @@ def job_inspector():
     print(f"[{datetime.now():%H:%M}] 블로그 검수: 스크린샷 {result['shots']}장, "
           f"정기 실패 {len(fails)}건 / 발굴 {len(report.get('issues', []))}건 (반복 {len(persisting)}건)")
 
-    # 검수 직후 오케스트레이션 — 정기 실패든 발굴이든 지적이 있을 때만
-    cur = None
-    if report.get("issues") or fails:
-        try:
-            cur = orchestrator.curate(report)
-            lines = ["🎛️ 검수 오케스트레이터 결정"]
-            for r in cur.get("results", []):
-                mark = "✅" if r.get("ok") else "❌"
-                lines.append(f"{mark} {r['action']}: {str(r.get('value', ''))[:40]} — {r['detail'][:60]}")
-            for b in cur.get("blocked", []):
-                lines.append(f"🚧 {b}")
-            for m in cur.get("manual", [])[:3]:
-                lines.append(f"🙋 수동 필요: {m.get('what', '')[:60]}")
-            lines.append(f"근거: {cur.get('rationale', '')[:200]}")
-            notify.send("\n".join(lines))
-        except Exception as e:
-            notify.send(f"⚠️ 검수 오케스트레이터 오류: {type(e).__name__}: {e}")
-            traceback.print_exc()
-
-    # 해결 루프 — 반복 지적을 지적으로 끝내지 않는다 (2026-08-22 사용자 결정).
-    # ①지난 시도의 효과를 이번 검수로 판정 ②이번 persisting을 진단·시도.
-    # 실패해도 검수·오케스트레이션 기록에 영향 없게 별도 try로 분리.
+    # ① 지난 지시의 효과 판정 — 검수 보고가 심판. 관리자가 최신 대장을 보고
+    #    지시하도록 오케스트레이션보다 먼저 실행한다 (실패해도 검수 기록 무해)
+    outcome_lines = []
     try:
         conn = db.connect()
         try:
             outcome_lines = resolver.update_outcomes(report, conn)
-            res = resolver.try_resolve(report, (cur or {}).get("actions", []), conn)
         finally:
             conn.close()
-        if outcome_lines or res["lines"]:
-            msg = ["🔧 반복 지적 해결 루프"]
-            if outcome_lines:
-                msg.append("🧪 지난 시도 판정: " + " / ".join(outcome_lines))
-            msg += res["lines"]
-            notify.send("\n".join(msg))
-        print(f"[{datetime.now():%H:%M}] 해결 루프: 판정 {len(outcome_lines)}건, "
-              f"시도 {len(res['lines'])}건")
-    except Exception as e:
-        notify.send(f"⚠️ 해결 루프 오류: {type(e).__name__}: {e}")
+    except Exception:
         traceback.print_exc()
+
+    # ② 오케스트레이터(관리자) v2 — 취합 → 작업 지시 → 실행 에이전트 라우팅
+    #    (fix_settings·prevent → blog_actions / fix_post → post_editor / manual → 사람)
+    if report.get("issues") or fails or report.get("persisting"):
+        try:
+            cur = orchestrator.manage(report)
+            lines = ["🎛️ 오케스트레이터 작업 지시"]
+            if outcome_lines:
+                lines.append("🧪 지난 지시 판정: " + " / ".join(outcome_lines))
+            for r in cur.get("results", []):
+                mark = "✅" if r.get("ok") else "❌"
+                lines.append(f"{mark} [{r.get('kind')}] {r.get('action')}: "
+                             f"{str(r.get('detail', ''))[:80]}")
+            for b in cur.get("blocked", []):
+                lines.append(f"🚧 {b}")
+            for m in cur.get("manual", [])[:3]:
+                lines.append(f"🙋 수동 전환: {str(m.get('what', ''))[:60]}"
+                             f" — {str(m.get('instruction', ''))[:80]}")
+            lines.append(f"근거: {cur.get('rationale', '')[:200]}")
+            notify.send("\n".join(lines))
+        except Exception as e:
+            notify.send(f"⚠️ 오케스트레이터 오류: {type(e).__name__}: {e}")
+            traceback.print_exc()
+    elif outcome_lines:
+        notify.send("🧪 지난 지시 판정: " + " / ".join(outcome_lines))
 
 
 def job_manual_queue():
