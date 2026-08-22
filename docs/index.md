@@ -8,6 +8,7 @@
 - [references.md](references.md) — 유사 구현체·GEO 지식·메이트 사례·제재 신호 수집 그래프 (keep 24 / drop 6 / 미검증 99)
 - [mate-analysis.md](mate-analysis.md) — 메이트 도메인 분석: 공식 가이드 3부작, AI 브리핑 노출 조건, 인용 글 구조 케이스 스터디, 인용수 위젯 실측
 - [loop-design.md](loop-design.md) — 자가 보정 루프 설계: 3겹 루프, 3단 계기판, 국면 규칙, 일일 판단 기준 (C5 구현 사양)
+- [lab.md](lab.md) — AI 인용 연구소: 브리핑 인용 원칙(실측 스윕 근거)과 실험 대장 E1~E4 (색인 래그·캐너리·쿼리 스윕·질문형 전환)
 - [deploy.md](deploy.md) — 미니PC(Ubuntu) 배포 절차: scp 전송, systemd 등록, Odin 동거 자원 예의, 세션 갱신 운영
 - raw/ — 원본 불변 보존 (reference-sweep JSON, AI 브리핑 관찰 스크린샷)
 
