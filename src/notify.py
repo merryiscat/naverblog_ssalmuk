@@ -9,20 +9,32 @@ import httpx
 from src import config
 
 # 텔레그램 sendMessage의 본문 한도 — 초과하면 API가 통째로 거부(400)한다.
-# 자르지 않고 줄 단위로 나눠 여러 건 발송한다 (2026-08-22 잘림 보고의 항체)
-TELEGRAM_MAX = 4096
+# 자르지 않고 줄 단위로 나눠 여러 건 발송한다 (2026-08-22 잘림 보고의 항체).
+# 한도는 텔레그램 기준인 UTF-16 code units다 — 이모지는 2로 세므로 이모지가 많으면
+# 파이썬 len()(코드포인트)보다 길다. 여유를 두고 4000으로 잡는다.
+TELEGRAM_MAX = 4000
+
+
+def _u16len(s: str) -> int:
+    """텔레그램이 세는 단위(UTF-16 code units) 길이 — 이모지는 2로 친다."""
+    return len(s.encode("utf-16-le")) // 2
 
 
 def _split(text: str) -> list[str]:
-    """한도 초과 메시지를 줄 경계에서 여러 조각으로 나눈다 (내용 소실 없음)."""
-    if len(text) <= TELEGRAM_MAX:
+    """한도 초과 메시지를 줄 경계에서 여러 조각으로 나눈다 (내용 소실 없음).
+
+    길이는 텔레그램 기준(UTF-16 code units)으로 잰다 — 이모지가 많아도 조각이
+    4096을 넘어 거부되지 않게 (2026-08-23 이모지 초과 거부 방어).
+    """
+    if _u16len(text) <= TELEGRAM_MAX:
         return [text]
     parts, cur = [], ""
     for line in text.split("\n"):
-        while len(line) > TELEGRAM_MAX:  # 한 줄이 한도를 넘는 극단 케이스
-            parts.append(line[:TELEGRAM_MAX])
-            line = line[TELEGRAM_MAX:]
-        if cur and len(cur) + 1 + len(line) > TELEGRAM_MAX:
+        while _u16len(line) > TELEGRAM_MAX:  # 한 줄이 한도를 넘는 극단 케이스
+            cut = TELEGRAM_MAX // 2  # 코드포인트 절반 — UTF-16으로도 한도 안
+            parts.append(line[:cut])
+            line = line[cut:]
+        if cur and _u16len(cur) + 1 + _u16len(line) > TELEGRAM_MAX:
             parts.append(cur)
             cur = line
         else:

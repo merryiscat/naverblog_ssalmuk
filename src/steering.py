@@ -190,7 +190,7 @@ def compose_report(phase: dict, data: dict, decision: dict, applied: list[str]) 
         cited = "🎯인용" if r["ai_cited"] else "미인용"
         lines.append(f"· {r['keyword']}: 검색 {r['rank'] or '30+'}위, {cited}")
     lines += ["", f"국면: Phase {phase['phase']} — {phase['why']}",
-              f"보정: {decision.get('rationale', '')[:200]}"]
+              f"보정: {decision.get('rationale', '')}"]
     if applied:
         lines.append("적용: " + "; ".join(applied))
     for alert in decision.get("alerts", []):

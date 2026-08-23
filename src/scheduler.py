@@ -227,7 +227,7 @@ def job_inspector():
     if urgent or persisting or fails:
         lines = ["🔍 블로그 검수 보고"]
         for c in fails[:5]:  # 정기 점검 실패 = 알려진 유형의 회귀 — 최우선 표시
-            lines.append(f"📋 정기 실패 — {c.get('item')}: {c.get('note', '')[:60]}")
+            lines.append(f"📋 정기 실패 — {c.get('item')}: {c.get('note', '')}")
         for i in urgent[:5]:
             lines.append(f"[{i.get('severity')}] {i.get('where')}: {i.get('what')}")
         if persisting:
@@ -259,13 +259,13 @@ def job_inspector():
             for r in cur.get("results", []):
                 mark = "✅" if r.get("ok") else "❌"
                 lines.append(f"{mark} [{r.get('kind')}] {r.get('action')}: "
-                             f"{str(r.get('detail', ''))[:80]}")
+                             f"{str(r.get('detail', ''))}")
             for b in cur.get("blocked", []):
                 lines.append(f"🚧 {b}")
             for m in cur.get("manual", [])[:3]:
-                lines.append(f"🙋 수동 전환: {str(m.get('what', ''))[:60]}"
-                             f" — {str(m.get('instruction', ''))[:80]}")
-            lines.append(f"근거: {cur.get('rationale', '')[:200]}")
+                lines.append(f"🙋 수동 전환: {str(m.get('what', ''))}"
+                             f" — {str(m.get('instruction', ''))}")
+            lines.append(f"근거: {cur.get('rationale', '')}")
             notify.send("\n".join(lines))
         except Exception as e:
             notify.send(f"⚠️ 오케스트레이터 오류: {type(e).__name__}: {e}")
