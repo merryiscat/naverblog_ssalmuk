@@ -47,10 +47,28 @@ def md_to_html(body_md: str) -> str:
     return html.replace("<h1>", "<h2>").replace("</h1>", "</h2>")
 
 
+# 흔한 출처 도메인 → 읽기 좋은 매체·기관명 (인라인 "(출처: …)" 표기용).
+# 정부·공공 도메인은 그대로도 신뢰 신호라 매핑 없으면 도메인을 쓴다.
+_MEDIA_NAMES = {
+    "namu.wiki": "나무위키", "ko.wikipedia.org": "위키백과", "en.wikipedia.org": "위키백과",
+    "n.news.naver.com": "네이버뉴스", "news.naver.com": "네이버뉴스",
+    "blog.naver.com": "네이버블로그", "post.naver.com": "네이버포스트",
+    "easylaw.go.kr": "찾기쉬운 생활법령정보", "bokjiro.go.kr": "복지로",
+    "work24.go.kr": "고용24", "bizinfo.go.kr": "기업마당",
+    "hometax.go.kr": "홈택스", "nts.go.kr": "국세청", "gov.kr": "정부24",
+    "moel.go.kr": "고용노동부", "mohw.go.kr": "보건복지부",
+    "semas.or.kr": "소상공인시장진흥공단", "kinfa.or.kr": "서민금융진흥원",
+}
+
+
 def _source_label(s: dict) -> str:
-    """출처 표기용 매체명 — 도메인(www 제거)을 쓰고, 없으면 제목 앞부분."""
+    """출처 표기용 매체·기관명 — 흔한 도메인은 한글 이름으로, 없으면 도메인."""
     from urllib.parse import urlparse
     d = urlparse(s.get("url", "")).netloc.replace("www.", "")
+    # ols.semas.or.kr 처럼 서브도메인이 붙어도 매핑되게 뒤에서부터 확인
+    for dom, name in _MEDIA_NAMES.items():
+        if d == dom or d.endswith("." + dom):
+            return name
     return d or (s.get("title", "") or "")[:20]
 
 

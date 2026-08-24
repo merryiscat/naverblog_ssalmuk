@@ -45,6 +45,61 @@ def _strip_tags(s: str) -> str:
     return re.sub(r"<[^>]+>", "", s).replace("&quot;", '"').replace("&amp;", "&")
 
 
+def _lcs_len(a: str, b: str) -> int:
+    """두 문자열의 최장 공통 부분문자열 길이 — 관련성 근사 신호 (형태소 분석 없이)."""
+    if not a or not b:
+        return 0
+    prev = [0] * (len(b) + 1)
+    best = 0
+    for i in range(1, len(a) + 1):
+        cur = [0] * (len(b) + 1)
+        for j in range(1, len(b) + 1):
+            if a[i - 1] == b[j - 1]:
+                cur[j] = prev[j - 1] + 1
+                if cur[j] > best:
+                    best = cur[j]
+        prev = cur
+    return best
+
+
+# 키워드의 행동·수식 접미 — 핵심 명사만 남겨 관련성을 판정하려고 떼어낸다.
+# (긴 것부터 — '신청방법'이 '신청'보다 먼저 매칭되게)
+_KW_SUFFIXES = ("신청방법", "자격조건", "신청기간", "총정리", "신청", "방법", "자격", "조건",
+                "후기", "추천", "가격", "정리", "비교", "혜택", "대상", "기준", "한도",
+                "금리", "종류", "순위")
+
+
+def _keyword_core(keyword: str) -> str:
+    """키워드에서 행동·수식 접미(신청·방법·조건 등)를 떼어 핵심 명사를 남긴다.
+
+    '실업급여신청'→'실업급여', '여행자보험'→'여행자보험'(접미 없음).
+    핵심이 2자 미만으로 줄면 원 키워드를 유지한다.
+    """
+    core = re.sub(r"\s+", "", keyword)
+    for suf in _KW_SUFFIXES:
+        if core.endswith(suf) and len(core) - len(suf) >= 2:
+            return core[: -len(suf)]
+    return core
+
+
+def _relevant(source: dict, keyword: str) -> bool:
+    """출처가 키워드와 관련 있나 — 무관한 최신 뉴스가 인용되던 문제의 필터 (2026-08-24).
+
+    커넥터(검색 3종이 아닌) 소스는 관련성이 보장되므로 항상 통과.
+    판정은 **제목만** 본다 — 네이버 검색 API의 description(스니펫)은 검색어가 매칭된
+    부분을 잘라 주는 발췌라 결과마다 키워드를 항상 포함한다(무관한 '게임 노조' 기사도
+    스니펫엔 '여행자보험'이 있다). 스니펫으로 판단하면 전부 통과되므로 제목으로만 본다 —
+    제목은 기사가 실제로 무엇에 관한지를 반영한다. 핵심 명사가 제목과 3자 이상
+    연속 겹치면 같은 주제로 본다 (실측 튜닝 2026-08-24).
+    """
+    if source.get("kind") not in ("news", "webkr", "blog"):
+        return True
+    core = _keyword_core(keyword)
+    title = re.sub(r"\s+", "", source.get("title", ""))
+    need = 3 if len(core) >= 3 else len(core)
+    return _lcs_len(core, title) >= need
+
+
 def _age_days(date_str: str) -> int | None:
     """소스 날짜 문자열 → 나이(일). 뉴스는 RFC822, 블로그는 YYYYMMDD. 실패·없음은 None."""
     s = (date_str or "").strip()
@@ -79,18 +134,21 @@ def gather_research(keyword: str) -> list[dict]:
     """
     from src.connectors import official_sources  # 지연 임포트 (순환 방지)
     sources = official_sources(keyword)
-    for kind, n in (("news", 6), ("webkr", 6), ("blog", 4)):
+    # 필터로 일부 빠지므로 넉넉히 받아 온다 (뉴스는 무관 기사 비율이 높음)
+    for kind, n in (("news", 8), ("webkr", 8), ("blog", 6)):
         try:
             for item in openapi_search(kind, keyword, display=n).get("items", []):
                 date_str = item.get("pubDate", item.get("postdate", ""))
-                sources.append({
+                s = {
                     "kind": kind,
                     "title": _strip_tags(item.get("title", "")),
                     "snippet": _strip_tags(item.get("description", "")),
                     "url": item.get("link", ""),
                     "date": date_str,
                     "age_days": _age_days(date_str),
-                })
+                }
+                if _relevant(s, keyword):  # 무관한 최신 뉴스 제거 (성의 없는 출처의 원인)
+                    sources.append(s)
         except Exception:
             continue  # 한 소스가 죽어도 나머지로 진행
     return sources
