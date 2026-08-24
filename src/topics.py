@@ -252,8 +252,11 @@ def discover(conn: sqlite3.Connection | None = None) -> list[dict]:
     today = date.today().isoformat()
     try:
         # 같은 날 재실행이면 오늘 발굴분을 갈아엎는다 (중복 selected 방지).
+        # 단 [canary] 실험 주제는 보존한다 — 날짜와 무관하게 다음 생성이 한 번 집는다
+        # (2026-08-24: 캐너리가 매일 DELETE에 지워져 영영 발행 안 되던 버그의 항체).
         # 바로 커밋 — 트랜잭션을 연 채 LLM 호출(별도 연결의 비용 기록)로 가면 락 충돌
-        conn.execute("DELETE FROM topics WHERE date = ?", (today,))
+        conn.execute("DELETE FROM topics WHERE date = ? "
+                     "AND (rationale IS NULL OR rationale NOT LIKE '%[canary]%')", (today,))
         conn.commit()
         seeds = get_seeds(conn)
         volumes = expand_candidates(seeds)

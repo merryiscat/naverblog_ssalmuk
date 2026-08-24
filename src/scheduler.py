@@ -71,9 +71,17 @@ def job_generate():
     """
     conn = db.connect()
     try:
+        # 오늘 selected + [canary] 실험 주제(날짜 무관, 1회 소비). 캐너리가 발굴
+        # DELETE·날짜필터에 막혀 영영 발행 안 되던 버그의 항체 (2026-08-24)
         queue = [dict(r) for r in conn.execute(
             "SELECT * FROM topics WHERE status = 'selected' "
-            "AND date = date('now', 'localtime')").fetchall()]
+            "AND (date = date('now', 'localtime') OR rationale LIKE '%[canary]%')").fetchall()]
+        # 캐너리는 큐에 넣는 즉시 used로 — 실패해도 재발행 루프 없이 단발 실험
+        canary_ids = [t["id"] for t in queue if "[canary]" in (t.get("rationale") or "")]
+        if canary_ids:
+            conn.executemany("UPDATE topics SET status = 'used' WHERE id = ?",
+                             [(i,) for i in canary_ids])
+            conn.commit()
         publish_times = _random_publish_times(len(queue))
         passed, skipped = [], []   # 합격/탈락 결과 — 종료 시 요약 통보 재료
         promoted, attempts = 0, 0

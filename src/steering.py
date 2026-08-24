@@ -74,11 +74,13 @@ def gather_input(conn: sqlite3.Connection) -> dict:
     ranks = [dict(r) for r in conn.execute(
         "SELECT keyword, rank, ai_cited FROM rankings WHERE date = ?", (today,))]
     metric = conn.execute("SELECT * FROM metrics WHERE date = ?", (today,)).fetchone()
+    # AI 검색 검토 상세(색인·브리핑·인용) — rankings에 없는 briefing까지 details_json에서
+    ai_review = (json.loads(metric["details_json"]).get("ranks", []) if metric else [])
     from src.competitors import recent_summary  # 순환 임포트 방지 (지연 임포트)
     from src.inspector import recent_summary as inspect_summary
     from src.mate_observer import recent_summary as mate_summary
     return {
-        "topics": topics, "posts": posts, "ranks": ranks,
+        "topics": topics, "posts": posts, "ranks": ranks, "ai_review": ai_review,
         "competitor_watch": recent_summary(conn),  # 공백 기회·브리핑 없는 키워드
         "mate_watch": mate_summary(conn),  # 메이트 선정자 관찰 힌트 (C7, 주 1회 갱신)
         "self_inspection": inspect_summary(conn),  # 블로그 화면 검수 지적 (주 3회 갱신)
@@ -186,9 +188,23 @@ def compose_report(phase: dict, data: dict, decision: dict, applied: list[str]) 
     if v:
         lines.append(f"방문자: 오늘 {v.get('today', '?')} / 누적 {v.get('total', '?')}"
                      f" / 이웃 {v.get('subscribers', '?')}")
-    for r in data["ranks"]:
-        cited = "🎯인용" if r["ai_cited"] else "미인용"
-        lines.append(f"· {r['keyword']}: 검색 {r['rank'] or '30+'}위, {cited}")
+    # AI 검색 검토 결과 — 발행 글마다 색인/브리핑 노출/우리 글 인용 상태를 명확히 (2026-08-24)
+    review = data.get("ai_review") or data["ranks"]
+    if review:
+        n = len(review)
+        n_idx = sum(1 for r in review if r.get("indexed"))
+        n_brief = sum(1 for r in review if r.get("briefing"))
+        n_cited = sum(1 for r in review if r.get("cited") or r.get("ai_cited"))
+        lines += ["", f"🔎 AI 검색 검토 — 색인 {n_idx}/{n} · 브리핑 노출 {n_brief} · 우리글 인용 {n_cited}"]
+        for r in review:
+            idx = "색인✓" if r.get("indexed") else "미색인"
+            if r.get("briefing"):
+                br = "🎯인용됨" if (r.get("cited") or r.get("ai_cited")) else "브리핑○/인용✗"
+            elif "briefing" in r:
+                br = "브리핑✗(기회없음)"
+            else:
+                br = ("🎯인용" if r.get("ai_cited") else "인용✗")
+            lines.append(f"· {r['keyword']}: {idx} / {br}")
     lines += ["", f"국면: Phase {phase['phase']} — {phase['why']}",
               f"보정: {decision.get('rationale', '')}"]
     if applied:
