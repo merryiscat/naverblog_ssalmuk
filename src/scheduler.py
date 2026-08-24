@@ -80,7 +80,14 @@ def job_generate():
         while queue and attempts < config.GENERATE_MAX_ATTEMPTS:
             attempts += 1
             topic = queue.pop(0)
-            result = writer.generate(topic, conn)
+            # 한 주제의 크래시(게이트 응답 파싱 실패 등)가 사이클 전체를 죽이지 않게 격리 —
+            # 크래시는 이 주제만 스킵 처리하고 예비 투입으로 이어간다 (2026-08-24 항체)
+            try:
+                result = writer.generate(topic, conn)
+            except Exception as e:
+                traceback.print_exc()
+                result = {"status": "error",
+                          "reason": f"생성 크래시: {type(e).__name__}: {str(e)[:200]}"}
             if result["status"] != "gated":
                 print(f"생성 스킵: {topic['keyword']} — {result.get('reason')}")
                 skipped.append({"keyword": topic["keyword"],

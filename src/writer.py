@@ -248,16 +248,41 @@ JSON만 출력:
  "feedback": "불합격 원인과 고칠 점을 구체적으로 (합격이어도 개선점 한 줄)"}}
 (low_reasons의 사유와 점수는 서로 모순되면 안 된다 — "반복 심하지 않음"이라 쓰고
 낮은 점수를 주는 식 금지. 사유가 없으면 점수를 올려라)"""
-    raw = llm.chat(config.MODEL_JUDGE, prompt, purpose="quality-gate")
-    raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    scores = json.loads(raw)
     dims = ["factual", "structure", "deai", "stuffing", "frontload", "specificity", "freshness"]
-    total = sum(float(scores.get(d, 0)) for d in dims) / len(dims)
+    # 게이트 응답이 깨진 JSON이면(사유 문자열의 escape 안 된 따옴표 등) 한 번 더 시도한다 —
+    # 한 번의 파싱 실패가 생성 사이클 전체를 죽이던 버그의 항체 (2026-08-24).
+    # 두 번 다 깨지면 예외 대신 '불합격' 폴백을 돌려 재작성/스킵으로 흘려보낸다.
+    scores = None
+    for _ in range(2):
+        raw = llm.chat(config.MODEL_JUDGE, prompt, purpose="quality-gate")
+        raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        try:
+            scores = json.loads(raw)
+            break
+        except json.JSONDecodeError:
+            # 앞뒤 설명문 섞임 대응 — 첫 { ~ 마지막 } 만 잘라 재시도
+            s2 = raw[raw.find("{"): raw.rfind("}") + 1] if "{" in raw and "}" in raw else ""
+            try:
+                scores = json.loads(s2)
+                break
+            except json.JSONDecodeError:
+                continue
+    if not isinstance(scores, dict):
+        return {"scores": {}, "total": 0.0, "passed": False,
+                "feedback": "게이트 채점 응답 JSON 파싱 실패 — 재작성으로 재시도",
+                "action": "rewrite", "research_query": ""}
+
+    def _num(v) -> float:  # 점수가 숫자가 아니어도 크래시 없이 0 처리
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return 0.0
+    total = sum(_num(scores.get(d)) for d in dims) / len(dims)
     # 사실성·신선도는 단독 커트라인 — 평균이 높아도 이 둘이 낮으면 불합격
     # (사실성: 허위 정보 방지 / 신선도: "2024년 기준" 발행 사고 재발 방지)
     passed = (total >= GATE_PASS_SCORE
-              and float(scores.get("factual", 0)) >= 60
-              and float(scores.get("freshness", 0)) >= FRESHNESS_PASS_SCORE)
+              and _num(scores.get("factual")) >= 60
+              and _num(scores.get("freshness")) >= FRESHNESS_PASS_SCORE)
     return {"scores": scores, "total": round(total, 1), "passed": passed,
             "feedback": scores.get("feedback", ""),
             "action": "pass" if passed else (scores.get("action") or "rewrite"),
