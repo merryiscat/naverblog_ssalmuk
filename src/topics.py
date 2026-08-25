@@ -38,6 +38,15 @@ DEFAULT_SEEDS_BY_CATEGORY = {
     "취미": ["캠핑초보", "홈트레이닝"],
 }
 
+# 정책·지원금이 주로 태그되는 분야 — 롱테일 확장의 씨앗을 여기서 고른다
+POLICY_CATEGORIES = ("라이프", "인사이트")
+# 롱테일 확장 목표 수, 롱테일 경쟁 상한(이보다 문서 많으면 롱테일 의미 없음),
+# 브리핑 확인 예산, 브리핑 캐시 유효기간(일)
+LONGTAIL_TARGET = 16
+LONGTAIL_MAX_DOCS = 30_000
+BRIEFING_BUDGET = 12
+BRIEFING_CACHE_DAYS = 14
+
 # 쿼리 예산 — 문서수 조회(검색 API)는 검색량 상위 이 개수만
 DOC_COUNT_BUDGET = 40
 # 한 분야가 후보를 도배하지 못하게 분야별 상한 (첫 실행에서 "~가볼만한곳" 도배 확인)
@@ -117,6 +126,129 @@ def score_golden(candidates: dict[str, dict], skip: set[str]) -> list[dict]:
         })
     out.sort(key=lambda c: -c["golden"])
     return out
+
+
+def _policy_category(kw: str) -> str:
+    """롱테일 키워드의 분야 추정 — 고용·취업 계열은 인사이트, 나머지 정책은 라이프."""
+    if any(t in kw for t in ("취업", "실업", "고용", "근로", "일자리", "채용", "연금", "청약", "재테크")):
+        return "인사이트"
+    return "라이프"
+
+
+def expand_longtail_questions(head_keywords: list[str]) -> list[dict]:
+    """정책·지원금 헤드 키워드를 '구체 질문형 롱테일'로 확장한다 (LLM).
+
+    lab.md 원칙 2/3: 헤드 키워드는 AI 브리핑이 공식기관만 인용하지만, 공식이 한 문장으로
+    답 못 하는 구체 질문(조건·예외·계산·서류·차이·기간·중복·불이익)은 경쟁이 얇고
+    블로그가 인용된다. 우리가 이길 수 있는 유일한 자리 (2026-08-26 사용자 전략 확정).
+    반환: [{keyword, head, why}] — doc_count·score는 이후 단계가 채운다.
+    """
+    if not head_keywords:
+        return []
+    listing = ", ".join(head_keywords[:15])
+    prompt = f"""너는 네이버 블로그 주제 발굴가다. 아래 정책·지원금 헤드 키워드에서
+실제 검색될 법한 '구체 질문형' 세부 주제를 만들어라.
+
+헤드 키워드(경쟁 수십만 개라 이대로는 AI 브리핑 인용을 못 받는다): {listing}
+
+목표: AI 브리핑이 '블로그'를 인용하는 자리 = 공식 페이지가 한 문장으로 답 못 하는
+구체 질문. 조건/예외/계산/서류/차이/기간/중복/불이익/거절사유 등을 담아라. 예:
+- 실업급여 → "실업급여 조기재취업수당 조건", "실업급여 이직확인서 안 나올 때", "실업급여 부정수급 처벌"
+- 국민취업지원제도 → "국민취업지원제도 1유형 2유형 차이", "국민취업지원제도 소득 재산 기준"
+- 소상공인지원금 → "소상공인 정책자금 거절 사유", "소상공인 대환대출 조건"
+
+규칙:
+- 검색창에 칠 법한 짧은 질문구 (띄어쓰기 포함, 대략 8~20자)
+- 일반형('~신청방법', '~총정리')은 금지 — 반드시 구체적 조건/상황/예외를 담아라
+- 서로 다른 헤드·상황으로 폭넓게 {LONGTAIL_TARGET}개
+
+JSON 배열만: [{{"keyword": "...", "head": "원 헤드 키워드", "why": "왜 구체 질문인지 한 줄"}}]"""
+    raw = llm.chat(config.MODEL_JUDGE, prompt, purpose="longtail-expand")
+    raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    out, seen = [], set()
+    for item in json.loads(raw):
+        kw = str(item.get("keyword", "")).strip()
+        if len(kw) >= 5 and kw not in seen:
+            seen.add(kw)
+            out.append({"keyword": kw, "head": item.get("head", ""), "why": item.get("why", "")})
+    return out
+
+
+def score_longtail(longtails: list[dict], skip: set[str]) -> list[dict]:
+    """롱테일 후보에 doc_count(경쟁)를 붙이고 경쟁이 얇은 것만 candidate 형식으로.
+
+    검색량은 롱테일이라 대개 미상 → 하한값으로 두고, 얇은 경쟁(doc_count↓)이 골든 점수를
+    끌어올리게 한다. LONGTAIL_MAX_DOCS를 넘으면 롱테일 의미가 없어 버린다.
+    """
+    out = []
+    for lt in longtails:
+        kw = lt["keyword"]
+        if kw in skip:
+            continue
+        try:
+            docs = doc_count(kw)
+        except Exception:
+            continue
+        if docs > LONGTAIL_MAX_DOCS:
+            continue  # 경쟁이 두꺼우면 롱테일이 아니다 — 스킵
+        out.append({
+            "keyword": kw, "volume": 300, "docs": docs,  # 검색량 미상 → 하한값
+            "golden": 300 / max(docs, 1), "category": _policy_category(kw),
+            "is_longtail": True, "head": lt.get("head", ""),
+        })
+    out.sort(key=lambda c: c["docs"])  # 경쟁 얇은 순
+    return out
+
+
+def check_briefing(conn: sqlite3.Connection, keywords: list[str]) -> dict[str, bool]:
+    """키워드별 AI 브리핑 노출 여부 — 캐시(keyword_meta) 우선, 미확인만 브라우저로.
+
+    lab.md 원칙 1: 브리핑이 안 뜨는 키워드는 인용 기회가 0이다 → 발행 전 컷의 근거.
+    브리핑 유무는 안정적이라 BRIEFING_CACHE_DAYS 동안 캐시를 재사용한다.
+    브라우저는 비로그인 — 브리핑은 로그인 없이도 보여 세션 위험이 없다 (04시 실행 안전).
+    """
+    result: dict[str, bool] = {}
+    to_check = []
+    for kw in keywords:
+        row = conn.execute(
+            "SELECT has_briefing FROM keyword_meta WHERE keyword = ? "
+            "AND checked_at >= datetime('now', 'localtime', ?)",
+            (kw, f"-{BRIEFING_CACHE_DAYS} days")).fetchone()
+        if row is not None and row["has_briefing"] is not None:
+            result[kw] = bool(row["has_briefing"])
+        else:
+            to_check.append(kw)
+
+    to_check = to_check[:BRIEFING_BUDGET]  # 예산 상한 — 나머지는 이번엔 미확인(보수적으로 통과)
+    if to_check:
+        from src.competitors import observe_keyword  # 지연 임포트 (순환 방지)
+        from playwright.sync_api import sync_playwright
+        import time
+        with sync_playwright() as pl:
+            browser = pl.chromium.launch(headless=True)
+            ctx = browser.new_context(user_agent=config.BROWSER_UA)  # 비로그인
+            page = ctx.new_page()
+            try:
+                for kw in to_check:
+                    try:
+                        obs = observe_keyword(page, kw)
+                        has = bool(obs.get("briefing"))
+                    except Exception:
+                        has = True  # 확인 실패는 보수적으로 통과 (기회 놓치지 않게)
+                    result[kw] = has
+                    conn.execute(
+                        "INSERT INTO keyword_meta (keyword, has_briefing) VALUES (?, ?) "
+                        "ON CONFLICT(keyword) DO UPDATE SET has_briefing = excluded.has_briefing, "
+                        "checked_at = datetime('now', 'localtime')",
+                        (kw, 1 if has else 0))
+                    time.sleep(2)  # 검색 간격 (사람 같은 속도)
+                conn.commit()
+            finally:
+                browser.close()
+    # 예산 초과로 미확인인 것은 통과(True)로 둔다 — 다음 회차에 확인됨
+    for kw in keywords:
+        result.setdefault(kw, True)
+    return result
 
 
 def score_llm(candidates: list[dict]) -> list[dict]:
@@ -199,21 +331,19 @@ def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
         for i, c in enumerate(short))
     prompt = f"""너는 블로그 주제 선정 오케스트레이터다. 오늘 쓸 주제 {n_sel}개(selected)와 예비 {n_res}개(reserve)를 골라라.
 
-선정 비율 (2026-08-22 사용자 확정 — 부분 특화. 실측 근거: AI 브리핑 신호가
-정책·지원금 계열에서만 관측, 넷플릭스·여행류는 브리핑 자체가 안 뜨는 쿼리):
-- selected {n_sel}개 중 **2개는 정책·지원금형** — 지원금·정책·제도·신청 방법·자격 요건 등
-  시점 의존 정보 수요가 있는 키워드 (분야 무관 — 브리핑이 뜨는 유형이 기준)
-- 같은 값이면 **구체 질문형(비교·조건·예외·계산·서류)을 헤드 단일어보다 우선** —
-  실측(lab.md 원칙 2): 헤드 텀 브리핑은 공식 기관이 점유, 블로그 인용은 구체 질문에서 발생
-- 나머지 1개는 **탐색** — 정책·지원금형이 아닌 다른 분야에서 (분산 탐색 창 유지)
-- 숏리스트에 정책·지원금형이 2개 미만이면 있는 만큼만 채우고 rationale에 그 사실을 명시
-- reserve {n_res}개도 같은 우선순위로 (정책·지원금형 우선 — 게이트 탈락 시 보충용)
+선정 원칙 (2026-08-26 사용자 전략 확정 — 구체 질문형 롱테일 집중):
+숏리스트는 이미 **AI 브리핑이 확인된 구체 질문형 롱테일 위주**로 걸러져 있다
+(헤드 키워드는 경쟁 수십만+브리핑이 공식기관만 인용해 우리가 못 이긴다. 우리가
+이길 수 있는 유일한 자리는 공식이 즉답 못 하는 구체 질문 = 경쟁 얇음+블로그 인용).
+- selected {n_sel}개: **경쟁이 얇고(블로그문서↓) 질문이 구체적인**(조건·예외·계산·서류·차이)
+  롱테일을 우선한다. 서로 다른 헤드·상황을 다루도록 골라 주제 중복을 피하라
+- 헤드 단일어(예: "실업급여신청", "여행자보험")는 브리핑에 떠도 인용 못 받으니 피하라
+- reserve {n_res}개도 같은 기준 (게이트 탈락 시 보충용)
 
 전략 컨텍스트:
 - 국면: Phase {phase['phase']} — {phase['why']}
-- 최근 7일 선정 분야 분포: {', '.join(recent_cats) or '없음'} — 탐색 슬롯은 쏠린 분야를 피하라
-- 최근 게이트 차단 키워드: {', '.join(gate_skips) or '없음'} — 같은 유형(공식 소스 없는
-  여행지·현장 정보류 등) 재선정을 피하라
+- 최근 7일 선정 분야 분포: {', '.join(recent_cats) or '없음'}
+- 최근 게이트 차단 키워드: {', '.join(gate_skips) or '없음'} — 같은 유형 재선정을 피하라
 - 보정(C5)의 내일 힌트: {json.dumps(hint, ensure_ascii=False)}
 - 브랜드·기업명 단독 키워드는 선정 금지
 
@@ -230,18 +360,8 @@ JSON만 출력: {{"selected": [0, 1, 2], "reserve": [3, 4], "rationale": "선정
     res = [int(i) for i in (res_raw if isinstance(res_raw, list) else [res_raw])][:n_res]
     if len(sel) < n_sel or any(not (0 <= i < len(short)) for i in sel + res):
         raise ValueError(f"오케스트레이터 응답 이상: {pick}")
-    # 검증(코드 레벨): Phase 0·1에서 selected 전부가 한 분야로 쏠리는 것만 막는다.
-    # (2026-08-22 완화 — 정책·지원금형 2건이 같은 분야(라이프 등)일 수 있으므로
-    # '모두 다른 분야' 강제를 풀고, 탐색 슬롯 1개의 분야 분리만 보장)
-    if phase["phase"] < 2:
-        cats = [short[i]["category"] for i in sel]
-        if len(set(cats)) == 1:
-            alt = next((i for i, c in enumerate(short)
-                        if i not in sel and c["category"] != cats[0]), None)
-            if alt is not None:
-                pick["rationale"] += (f" [검증기: 전 슬롯 동일 분야 — "
-                                      f"{short[sel[-1]]['keyword']}→{short[alt]['keyword']} 교체]")
-                sel[-1] = alt
+    # 분야 분산 강제는 제거 (2026-08-26): 구체 질문형 롱테일 집중 전략으로 전환하면서
+    # selected가 라이프·인사이트(정책)로 쏠리는 것은 의도된 결과다.
     return {"selected": sel, "reserve": res, "rationale": pick.get("rationale", "")}
 
 
@@ -260,22 +380,50 @@ def discover(conn: sqlite3.Connection | None = None) -> list[dict]:
         conn.commit()
         seeds = get_seeds(conn)
         volumes = expand_candidates(seeds)
-        candidates = score_golden(volumes, skip=recent_keywords(conn))
-        top = score_llm(candidates[:LLM_CANDIDATES])
-        top.sort(key=lambda c: (-c["llm_score"], -c["golden"]))
+        skip = recent_keywords(conn)
+        head_scored = score_golden(volumes, skip=skip)
 
-        # 최종 선정 — 오케스트레이터 (실패 시 결정론 폴백: 분야 중복 없는 상위 3+2)
+        # ① 정책 헤드 → 구체 질문형 롱테일 생성·채점 (우리가 이길 수 있는 유일한 자리 —
+        #    헤드는 경쟁 수십만+브리핑이 공식만 인용. 2026-08-26 사용자 전략 확정)
+        policy_heads = [c["keyword"] for c in head_scored
+                        if c["category"] in POLICY_CATEGORIES][:12]
+        try:
+            longtails = score_longtail(expand_longtail_questions(policy_heads), skip)
+        except Exception as e:
+            print(f"롱테일 확장 실패 — 헤드만으로 진행: {type(e).__name__}: {e}")
+            longtails = []
+
+        # 롱테일 우선 + 헤드 보충으로 후보 풀 구성 → LLM 채점
+        lt_keys = {lt["keyword"] for lt in longtails}
+        candidates = longtails + [c for c in head_scored if c["keyword"] not in lt_keys]
+        top = score_llm(candidates[:LLM_CANDIDATES])
+        # 롱테일 먼저, 그다음 채점 높은 순, 경쟁 얇은 순
+        top.sort(key=lambda c: (0 if c.get("is_longtail") else 1, -c["llm_score"], c["docs"]))
+
+        # 최종 선정 — 오케스트레이터 (실패 시 결정론 폴백)
         n_sel = config.DAILY_SELECT_COUNT
         n_res = config.RESERVE_COUNT
-        short = shortlist(top)
+        # 롱테일은 분야가 라이프·인사이트로 겹치므로 per_cat을 넉넉히 (집중 전략)
+        short = shortlist(top, size=14, per_cat=6)
+
+        # ② 브리핑 게이트 — 브리핑 안 뜨는 키워드 컷 (브라우저+캐시). 전멸 방지 폴백
+        try:
+            brief = check_briefing(conn, [c["keyword"] for c in short])
+            gated = [c for c in short if brief.get(c["keyword"], True)]
+            if len(gated) >= n_sel + n_res:
+                short = gated
+            else:
+                print(f"브리핑 게이트 후 {len(gated)}개뿐 — 부족해 원 shortlist 유지")
+        except Exception as e:
+            print(f"브리핑 게이트 실패 — 게이트 없이 진행: {type(e).__name__}: {e}")
         try:
             pick = orchestrate_selection(conn, short)
         except Exception as e:
             print(f"오케스트레이터 실패 — 결정론 폴백: {type(e).__name__}: {e}")
-            fallback = [c for c in shortlist(top, size=n_sel + n_res, per_cat=1) if c in short]
-            pick = {"selected": [short.index(c) for c in fallback[:n_sel]],
-                    "reserve": [short.index(c) for c in fallback[n_sel:n_sel + n_res]],
-                    "rationale": "오케스트레이터 실패 — 분야 중복 없는 점수 상위 폴백"}
+            # short는 이미 롱테일·브리핑 순으로 정렬·게이트됨 — 상위에서 순서대로
+            pick = {"selected": list(range(min(n_sel, len(short)))),
+                    "reserve": list(range(n_sel, min(n_sel + n_res, len(short)))),
+                    "rationale": "오케스트레이터 실패 — 게이트된 shortlist 상위 폴백"}
 
         chosen = {short[i]["keyword"]: "selected" for i in pick["selected"]}
         for i in pick["reserve"]:

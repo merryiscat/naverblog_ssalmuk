@@ -107,6 +107,13 @@ CREATE TABLE IF NOT EXISTS inspections (
     created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS keyword_meta (
+    keyword     TEXT PRIMARY KEY,          -- 후보 키워드
+    has_briefing INTEGER,                  -- AI 브리핑 노출 여부 (0/1) — 없으면 인용 기회 0
+    doc_count   INTEGER,                   -- 관측 시점 블로그 경쟁 문서수
+    checked_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS resolution_attempts (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     date        TEXT NOT NULL,
