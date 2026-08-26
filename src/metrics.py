@@ -54,11 +54,17 @@ def collect_citations(page) -> dict:
     )
     result = {"widget_raw": data.get("widget"), "tooltip_raw": data.get("tooltip")}
     tip = data.get("tooltip") or ""
-    # 툴팁 형식: "누적 인용수 : X 8월 인용수 : Y 6월 인용수 (8월 대상자 선정 기준) : Z"
-    # '100 미만'이 먼저 잡히도록 '미만' 패턴을 앞에 둔다 (숫자만 잡히면 오판)
-    for key, pat in (("cumulative", r"누적 인용수\s*:\s*([\d,]+\s*미만|[\d,]+)"),
-                     ("this_month", r"\d+월 인용수\s*:\s*([\d,]+\s*미만|[\d,]+)"),
-                     ("basis_month", r"선정 기준\)\s*:\s*([\d,]+\s*미만|[\d,]+)")):
+    # 툴팁 형식: "누적 인용수 : X  {N}월 인용수 : Y  {N-2}월 인용수 ({N}월 대상자 선정 기준) : Z"
+    # ⚠ 값과 다음 라벨 사이에 공백이 없을 수 있다("...130 8월...130 6월..." → "1306월")
+    # → 다음 라벨의 '월 숫자'를 알아야 값 경계를 안다. 당월·기준월(당월-2)을 계산해
+    # lookahead로 경계를 고정한다 (2026-08-26: 8월 인용수 130이 1306으로 오파싱된 버그 항체).
+    mon = date.today().month
+    basis = mon - 2 if mon > 2 else mon + 10
+    for key, pat in (
+        ("cumulative", rf"누적 인용수\s*:\s*([\d,]+\s*미만|[\d,]+?)(?=\s*{mon}월|\s*$)"),
+        ("this_month", rf"{mon}월 인용수\s*:\s*([\d,]+\s*미만|[\d,]+?)(?=\s*{basis}월|\s*\(|\s*$)"),
+        ("basis_month", r"선정 기준\)\s*:\s*([\d,]+\s*미만|[\d,]+)"),
+    ):
         m = re.search(pat, tip)
         if m:
             result[key] = m.group(1).strip()
@@ -213,11 +219,27 @@ def collect(conn: sqlite3.Connection | None = None) -> dict:
             finally:
                 browser.close()
 
+        # 프로필 인용수 위젯(네이버 공식 카운트)이 우리 인용의 진짜 신호다 — per-keyword
+        # 검색 파싱은 놓칠 수 있으므로(실측: 위젯 130인데 per-keyword 0), 이 값의 증가를
+        # 축하 알림으로 올린다. 메이트 선정 기준 자체가 월간 인용수라 이게 곧 목표 지표다.
+        cum_now = citations.get("cumulative_n")
+        prev = conn.execute(
+            "SELECT citations FROM metrics WHERE citations IS NOT NULL "
+            "AND date < ? ORDER BY date DESC LIMIT 1", (today,)).fetchone()
+        prev_cum = prev["citations"] if prev else None
+        if cum_now and cum_now > (prev_cum or 0):
+            month = citations.get("this_month", "?")
+            notify.send(
+                f"🎉 AI 브리핑 인용수 상승! 누적 {cum_now}"
+                + (f" (직전 {prev_cum})" if prev_cum else " (첫 집계 — 100 돌파)")
+                + f"\n8월 인용수 {month} — 메이트 선정 기준 지표\n"
+                f"(per-keyword 감지는 별개로 점검 필요)")
+
         visitors = collect_visitors()
         conn.execute(
             "INSERT OR REPLACE INTO metrics (date, citations, visitors, details_json) "
             "VALUES (?, ?, ?, ?)",
-            (today, citations.get("cumulative_n"), visitors.get("today"),
+            (today, cum_now, visitors.get("today"),
              json.dumps({"citations": citations, "ranks": ranks, "visitors": visitors},
                         ensure_ascii=False)))
         conn.commit()

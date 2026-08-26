@@ -41,8 +41,14 @@ def decide_phase(conn: sqlite3.Connection) -> dict:
     first_pub = conn.execute(
         "SELECT MIN(published_at) AS d FROM posts WHERE status IN ('published','verified')"
     ).fetchone()["d"]
-    cited = conn.execute(
+    # 인용 신호는 두 갈래 — per-keyword 검색 감지(rankings)는 놓칠 수 있어(2026-08-26 실측:
+    # 위젯 130인데 per-keyword 0), 프로필 인용수 위젯(네이버 공식 카운트, metrics.citations)을
+    # 권위 신호로 함께 본다. 둘 중 하나라도 인용을 가리키면 Phase 0을 벗어난다.
+    cited_kw = conn.execute(
         "SELECT COUNT(*) AS n FROM rankings WHERE ai_cited = 1").fetchone()["n"]
+    prof = conn.execute(
+        "SELECT MAX(citations) AS c FROM metrics WHERE citations IS NOT NULL").fetchone()["c"]
+    cited = cited_kw or (prof or 0)
     cat_cited = conn.execute(
         "SELECT t.category, COUNT(DISTINCT r.post_id) AS n FROM rankings r "
         "JOIN posts p ON r.post_id = p.id JOIN topics t ON p.topic_id = t.id "
@@ -55,7 +61,8 @@ def decide_phase(conn: sqlite3.Connection) -> dict:
         return {"phase": 2, "why": f"분야 '{cat_cited['category']}'에서 인용 글 {cat_cited['n']}건 — 수렴",
                 "target_category": cat_cited["category"]}
     if cited >= 1 or weeks >= PHASE0_WEEKS:
-        return {"phase": 1, "why": f"ai_cited {cited}건, 발행 {weeks:.1f}주차 — 가중 국면"}
+        sig = (f"프로필 인용수 {prof}" if prof else f"per-keyword {cited_kw}건")
+        return {"phase": 1, "why": f"{sig}, 발행 {weeks:.1f}주차 — 가중 국면"}
     return {"phase": 0, "why": f"발행 {weeks:.1f}주차, 인용 신호 없음 — 탐색 유지 (4주까지)"}
 
 
