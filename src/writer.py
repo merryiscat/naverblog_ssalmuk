@@ -366,29 +366,52 @@ HERO_PALETTES = {
 }
 
 
+def _image_has_text(img: bytes) -> bool:
+    """비전으로 이미지에 글자가 있는지 판정 — 깨진 한글 발행 방지 게이트 (2026-08-26).
+
+    gpt-image-1이 '글자 없음' 지시를 무시하고 깨진 한글('4대보힘 미가깁묘')을 넣던 사고의
+    항체. 검사 실패는 '글자 없음'(통과)으로 본다 — 게이트가 발행을 막지 않게(보수적 통과).
+    """
+    try:
+        raw = llm.chat_vision(
+            config.MODEL_INSPECTOR,
+            "이 이미지 안에 글자·문자·숫자(언어 불문, 로고·워터마크 포함)가 조금이라도 "
+            "보이면 YES, 전혀 없으면 NO. 오직 YES 또는 NO 한 단어만 답하라.",
+            [img], purpose="image-text-gate")
+        return "YES" in (raw or "").upper()
+    except Exception:
+        return False
+
+
 def make_hero_image(title: str, category: str, stem: str,
                     style_hint: str | None = None) -> str | None:
     """대표 이미지 1장 생성·저장 — 실패해도 글 발행은 계속 (치명 요소 아님).
 
-    이미지 안에 글자를 넣지 않는다 — 생성 모델의 한글 렌더링이 불안정해
-    깨진 글자가 오히려 신뢰도를 깎는다 (검수 에이전트 지적 사항이기도 함).
+    이미지 안에 글자를 넣지 않는다 — 생성 모델의 한글 렌더링이 불안정해 깨진 글자가
+    오히려 신뢰도를 깎는다. 프롬프트로 '글자 없음'을 지시해도 모델이 무시하므로,
+    생성 후 비전 게이트(_image_has_text)로 글자를 검사한다: 글자가 있으면 1회 재생성,
+    그래도 있으면 이미지 없이 발행(2026-08-26 사용자 결정 — 텍스트 없는 이미지 게이트).
     스타일은 HERO_STYLES 풀에서 글마다 다르게 선택 + 분야별 팔레트 (획일화 방지).
-    style_hint: 해결 루프(resolver)가 정책에 주입한 추가 지침 (풀 위에 덧입힘).
     """
     import zlib  # 안정 해시 — 프로세스가 바뀌어도 같은 글은 같은 스타일
     pick = HERO_STYLES[zlib.crc32(stem.encode("utf-8")) % len(HERO_STYLES)]
     palette = HERO_PALETTES.get(category, "차분한 파스텔 톤")
-    style = (f"{palette}의 {pick}, 블로그 대표 이미지. "
-             "글자·텍스트·숫자 절대 없음, 브랜드 로고·상표 절대 없음, 깔끔한 구성")
+    style = (f"{palette}의 {pick}, 블로그 대표 이미지. 오직 그림·오브젝트만. "
+             "글자·텍스트·숫자·캡션·제목·워터마크 절대 없음, 브랜드 로고·상표 절대 없음")
     if style_hint:
         style += f". 추가 스타일 지침: {style_hint}"
+    prompt = f"{style}. 주제: {title} ({category} 분야)"
     try:
-        img = llm.generate_image(f"{style}. 주제: {title} ({category} 분야)",
-                                 purpose="hero-image", size="1536x1024")
-        config.ensure_dirs()
-        path = config.IMAGES_DIR / f"{stem}.png"
-        path.write_bytes(img)
-        return str(path)
+        for attempt in range(2):  # 글자 감지 시 1회 재생성
+            img = llm.generate_image(prompt, purpose="hero-image", size="1536x1024")
+            if not _image_has_text(img):
+                config.ensure_dirs()
+                path = config.IMAGES_DIR / f"{stem}.png"
+                path.write_bytes(img)
+                return str(path)
+            print(f"대표 이미지에 글자 감지 — 재생성 {attempt + 1}/2")
+        print("이미지 글자 게이트 2회 실패 — 이미지 없이 발행")
+        return None
     except Exception as e:
         print(f"대표 이미지 생성 실패 (글은 이미지 없이 진행): {type(e).__name__}: {e}")
         return None
