@@ -43,13 +43,18 @@ def observe_keyword(page, keyword: str) -> dict:
             if (!text.includes('AI 브리핑')) return { briefing: false, sources: [] };
             const label = [...document.querySelectorAll('*')].find(
                 e => e.children.length === 0 && e.textContent.trim() === 'AI 브리핑');
-            let root = label;
-            for (let i = 0; root && i < 8; i++) {
-                if (root.querySelectorAll('a').length > 3) break;
-                root = root.parentElement;
+            if (!label) return { briefing: true, sources: [], scoped: false };
+            // AI 브리핑 박스를 안정적 클래스로 특정 (2026-08-26 DOM 규명)
+            let box = label.closest('.api_subject_bx');
+            if (!box) {
+                box = label;
+                for (let i = 0; box && i < 12; i++) {
+                    if (box.classList && box.classList.contains('api_subject_bx')) break;
+                    box = box.parentElement;
+                }
             }
-            if (!root) return { briefing: true, sources: [], scoped: false };
-            const links = [...root.querySelectorAll('a')].map(a => a.href)
+            if (!box) return { briefing: true, sources: [], scoped: false };
+            const links = [...box.querySelectorAll('a')].map(a => a.href)
                 .filter(h => /blog\\.naver\\.com\\/[^/]+\\/\\d+/.test(h));
             return { briefing: true, sources: [...new Set(links)].slice(0, 4), scoped: true };
         }""")

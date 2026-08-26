@@ -454,8 +454,9 @@ def generate(topic: dict, conn: sqlite3.Connection | None = None) -> dict:
         safe_kw = re.sub(r"[^\w가-힣]", "_", topic["keyword"])
         body_path = config.POSTS_DIR / f"{today}-{safe_kw}.md"
         body_path.write_text(f"# {title}\n\n{body}", encoding="utf-8")
-        hero = make_hero_image(title, topic.get("category", "일반"), f"{today}-{safe_kw}",
-                               style_hint=image_hint)
+        hero = (make_hero_image(title, topic.get("category", "일반"), f"{today}-{safe_kw}",
+                                style_hint=image_hint)
+                if config.HERO_IMAGE_ENABLED else None)  # 2026-08-26 이미지 비활성화
 
         cur = conn.execute(
             "INSERT INTO posts (topic_id, title, body_path, images_json, gate_json, "

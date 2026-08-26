@@ -124,32 +124,33 @@ def check_indexed(title: str) -> bool:
 def check_ai_cited(page, keyword: str) -> dict:
     """검색 페이지에서 AI 브리핑 유무 + 내 블로그 인용 여부를 관찰한다.
 
-    브리핑 블록을 정확히 못 찾으면 근사 판정임을 approx로 표시한다.
+    브리핑 박스는 안정적 클래스 `.api_subject_bx`로 특정한다 (2026-08-26 DOM 규명 —
+    기존 '부모 타고 링크>3개' 휴리스틱이 엉뚱한 컨테이너에서 멈춰 인용을 놓쳤다).
+    ※ per-keyword는 우리가 체크하는 소수 쿼리의 표본일 뿐 — 프로필 인용수 위젯이 총량의
+    권위 신호다(수백 개 롱테일 쿼리의 인용은 여기서 못 잡는다).
     """
     page.goto(f"https://search.naver.com/search.naver?query={keyword}", timeout=45000)
     time.sleep(2)
     return page.evaluate(
         """(myPrefix) => {
             const text = document.body.innerText;
-            const hasBriefing = text.includes('AI 브리핑');
-            if (!hasBriefing) return { briefing: false, cited: false, approx: false };
-            // 브리핑 블록 추정: 'AI 브리핑' 라벨을 포함한 최상위 섹션
+            if (!text.includes('AI 브리핑')) return { briefing: false, cited: false, approx: false };
             const label = [...document.querySelectorAll('*')].find(
                 e => e.children.length === 0 && e.textContent.trim() === 'AI 브리핑');
-            let root = label;
-            for (let i = 0; root && i < 8; i++) {
-                if (root.querySelectorAll('a').length > 3) break;
-                root = root.parentElement;
+            if (!label) return { briefing: true, cited: false, approx: true };
+            // AI 브리핑 라벨을 감싸는 안정적 컨테이너
+            let box = label.closest('.api_subject_bx');
+            if (!box) {
+                box = label;
+                for (let i = 0; box && i < 12; i++) {
+                    if (box.classList && box.classList.contains('api_subject_bx')) break;
+                    box = box.parentElement;
+                }
             }
-            if (root) {
-                const cited = [...root.querySelectorAll('a')]
-                    .some(a => (a.href || '').includes(myPrefix));
-                return { briefing: true, cited, approx: false };
-            }
-            // 블록 특정 실패 — 페이지 전체에서 근사 판정 (하단 일반 결과 오탐 가능)
-            const cited = [...document.querySelectorAll('#main_pack a')]
+            if (!box) return { briefing: true, cited: false, approx: true };
+            const cited = [...box.querySelectorAll('a')]
                 .some(a => (a.href || '').includes(myPrefix));
-            return { briefing: true, cited, approx: true };
+            return { briefing: true, cited, approx: false };
         }""",
         MY_BLOG_PREFIX,
     )
