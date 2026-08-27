@@ -13,11 +13,12 @@
 """
 
 import json
+import re
 import sqlite3
 from datetime import date
 
 from src import config, db, llm
-from src.naver_api import doc_count, keyword_stats
+from src.naver_api import doc_count, keyword_stats, openapi_search
 
 # 네이버 메이트 공식 10개 분야 (보도자료 2026-07-15) — 선정이 분야별로 이뤄지므로
 # 시드를 이 체계에 정렬한다. 시드는 콜드 스타트용이며,
@@ -174,11 +175,12 @@ JSON 배열만: [{{"keyword": "...", "head": "원 헤드 키워드", "why": "왜
     return out
 
 
-def score_longtail(longtails: list[dict], skip: set[str]) -> list[dict]:
+def score_longtail(longtails: list[dict], skip: set[str],
+                   max_docs: int = LONGTAIL_MAX_DOCS) -> list[dict]:
     """롱테일 후보에 doc_count(경쟁)를 붙이고 경쟁이 얇은 것만 candidate 형식으로.
 
     검색량은 롱테일이라 대개 미상 → 하한값으로 두고, 얇은 경쟁(doc_count↓)이 골든 점수를
-    끌어올리게 한다. LONGTAIL_MAX_DOCS를 넘으면 롱테일 의미가 없어 버린다.
+    끌어올리게 한다. max_docs를 넘으면 버린다(예측 주제는 신선도로 보상하니 상한을 더 높게).
     """
     out = []
     for lt in longtails:
@@ -189,7 +191,7 @@ def score_longtail(longtails: list[dict], skip: set[str]) -> list[dict]:
             docs = doc_count(kw)
         except Exception:
             continue
-        if docs > LONGTAIL_MAX_DOCS:
+        if docs > max_docs:
             continue  # 경쟁이 두꺼우면 롱테일이 아니다 — 스킵
         out.append({
             "keyword": kw, "volume": 300, "docs": docs,  # 검색량 미상 → 하한값
@@ -197,6 +199,57 @@ def score_longtail(longtails: list[dict], skip: set[str]) -> list[dict]:
             "is_longtail": True, "head": lt.get("head", ""),
         })
     out.sort(key=lambda c: c["docs"])  # 경쟁 얇은 순
+    return out
+
+
+# 월말 이 날짜(포함)부터 다음 달 예측 주제를 발굴에 추가한다 (신선도 선점)
+NEXT_MONTH_PREVIEW_FROM_DAY = 28
+
+
+def expand_next_month_forward(when: date | None = None) -> list[dict]:
+    """월말에 '다음 달 기준'으로 새로 시행·접수·변경되는 정책·지원금을 미리 예측 발굴한다.
+
+    다음 달 검색이 급증하기 전에 신선한 글을 올려 AI 브리핑 인용을 선점하는 베팅
+    (mate-analysis '영화구름' 스나이핑 사례 — 브리핑이 낡은 소스를 사과하며 인용하던 공백을
+    신선한 글로 가져온다). 2026-08-28 사용자 요청.
+
+    실제 'N월부터 달라지는'·'N월 시행/신청' 뉴스로 근거화한 뒤 LLM이 구체 질문형 롱테일 생성.
+    반환: [{keyword, head, why}] — doc_count·score는 score_longtail이 채운다.
+    """
+    today = when or date.today()
+    nm = today.month % 12 + 1  # 다음 달
+    # 뉴스 근거 — 'N월부터 달라지는' 류 요약 기사가 월 전환 변경의 금맥
+    heads = []
+    for q in (f"{nm}월부터 달라지는", f"{nm}월 시행 지원금", f"{nm}월 신청 정책", f"{nm}월 접수"):
+        try:
+            for it in openapi_search("news", q, display=5).get("items", []):
+                t = re.sub(r"<[^>]+>", "", it.get("title", ""))
+                if t and t not in heads:
+                    heads.append(t)
+        except Exception:
+            continue
+    news_block = "\n".join(f"- {h}" for h in heads[:18]) or "(뉴스 근거 없음 — 매년 반복되는 정기 정책 위주로)"
+    prompt = f"""오늘은 {today}, 곧 {nm}월이다. {nm}월부터 새로 시행·접수 시작되거나 기준·금액이
+바뀌는 정책·지원금 중, 사람들이 '{nm}월 기준'으로 검색할 **구체 질문형** 주제를 예측하라.
+
+참고 뉴스({nm}월 실제 변경):
+{news_block}
+
+규칙:
+- 구체 질문형(신청기간·달라지는 점·대상·금액 변경·조건 등) + 정책·지원금 위주 (우리 승부처)
+- {nm}월에 실제로 검색 수요가 생길 것에 한정 — 신규 접수·기준 변경·정기 이벤트·명절(추석) 등
+- 근거 없는 상상 금지: 위 뉴스나 매년 반복되는 정기 정책에 기반하라
+- 검색창에 칠 법한 짧은 질문구(8~20자), 서로 다른 주제로 {LONGTAIL_TARGET}개
+
+JSON 배열만: [{{"keyword": "...", "why": "왜 {nm}월에 검색이 뜰지 한 줄"}}]"""
+    raw = llm.chat(config.MODEL_JUDGE, prompt, purpose="next-month-forward")
+    raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    out, seen = [], set()
+    for item in json.loads(raw):
+        kw = str(item.get("keyword", "")).strip()
+        if len(kw) >= 5 and kw not in seen:
+            seen.add(kw)
+            out.append({"keyword": kw, "head": f"{nm}월 예측", "why": item.get("why", "")})
     return out
 
 
@@ -327,8 +380,10 @@ def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
     n_sel = config.DAILY_SELECT_COUNT
     n_res = config.RESERVE_COUNT
     listing = "\n".join(
-        f"{i}. [{c['category']}] {c['keyword']} (골든 {c['golden']:.2f} / 채점 {c['llm_score']:.2f} — {c['reason']})"
+        f"{i}. {'🔮[다음달예측] ' if c.get('is_forward') else ''}[{c['category']}] {c['keyword']} "
+        f"(골든 {c['golden']:.2f} / 채점 {c['llm_score']:.2f} — {c['reason']})"
         for i, c in enumerate(short))
+    has_forward = any(c.get("is_forward") for c in short)
     prompt = f"""너는 블로그 주제 선정 오케스트레이터다. 오늘 쓸 주제 {n_sel}개(selected)와 예비 {n_res}개(reserve)를 골라라.
 
 선정 원칙 (2026-08-26 사용자 전략 확정 — 구체 질문형 롱테일 집중):
@@ -338,7 +393,9 @@ def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
 - selected {n_sel}개: **경쟁이 얇고(블로그문서↓) 질문이 구체적인**(조건·예외·계산·서류·차이)
   롱테일을 우선한다. 서로 다른 헤드·상황을 다루도록 골라 주제 중복을 피하라
 - 헤드 단일어(예: "실업급여신청", "여행자보험")는 브리핑에 떠도 인용 못 받으니 피하라
-- reserve {n_res}개도 같은 기준 (게이트 탈락 시 보충용)
+- reserve {n_res}개도 같은 기준 (게이트 탈락 시 보충용){'''
+- 🔮[다음달예측] 표시는 다음 달에 검색이 급증할 정책 주제다 — 신선한 글로 브리핑 인용을
+  선점하려는 것이니, selected에 1~2개 우선 포함하라 (아직 브리핑이 안 떠도 의도된 선점)''' if has_forward else ''}
 
 전략 컨텍스트:
 - 국면: Phase {phase['phase']} — {phase['why']}
@@ -393,23 +450,42 @@ def discover(conn: sqlite3.Connection | None = None) -> list[dict]:
             print(f"롱테일 확장 실패 — 헤드만으로 진행: {type(e).__name__}: {e}")
             longtails = []
 
-        # 롱테일 우선 + 헤드 보충으로 후보 풀 구성 → LLM 채점
-        lt_keys = {lt["keyword"] for lt in longtails}
-        candidates = longtails + [c for c in head_scored if c["keyword"] not in lt_keys]
+        # ①-b 월말(28일~)이면 다음 달 예측 주제를 추가 — 신선도 선점 (2026-08-28 사용자 요청).
+        # 예측 주제는 아직 브리핑이 안 뜰 수 있어 게이트를 면제한다(선점 베팅). 경쟁 상한은
+        # 신선도로 보상되므로 더 관대하게(2배).
+        forward = []
+        if date.today().day >= NEXT_MONTH_PREVIEW_FROM_DAY:
+            try:
+                forward = score_longtail(expand_next_month_forward(), skip,
+                                         max_docs=LONGTAIL_MAX_DOCS * 2)
+                for f in forward:
+                    f["is_forward"] = True
+                print(f"다음 달 예측 주제 {len(forward)}개 추가")
+            except Exception as e:
+                print(f"다음 달 예측 실패 — 건너뜀: {type(e).__name__}: {e}")
+
+        # 예측 → 롱테일 → 헤드 보충으로 후보 풀 구성 → LLM 채점
+        lt_keys = {c["keyword"] for c in forward + longtails}
+        candidates = forward + longtails + [c for c in head_scored if c["keyword"] not in lt_keys]
         top = score_llm(candidates[:LLM_CANDIDATES])
-        # 롱테일 먼저, 그다음 채점 높은 순, 경쟁 얇은 순
-        top.sort(key=lambda c: (0 if c.get("is_longtail") else 1, -c["llm_score"], c["docs"]))
+        # 예측 먼저, 롱테일 다음, 그다음 채점 높은 순·경쟁 얇은 순
+        top.sort(key=lambda c: (0 if c.get("is_forward") else 1 if c.get("is_longtail") else 2,
+                                -c["llm_score"], c["docs"]))
 
         # 최종 선정 — 오케스트레이터 (실패 시 결정론 폴백)
         n_sel = config.DAILY_SELECT_COUNT
         n_res = config.RESERVE_COUNT
         # 롱테일은 분야가 라이프·인사이트로 겹치므로 per_cat을 넉넉히 (집중 전략)
         short = shortlist(top, size=14, per_cat=6)
+        # shortlist가 llm_score로 재정렬하며 예측 주제를 밀어낼 수 있어 — 앞에 확실히 보강
+        fwd_items = [c for c in top if c.get("is_forward")][:3]
+        short = fwd_items + [c for c in short if c["keyword"] not in {f["keyword"] for f in fwd_items}]
 
-        # ② 브리핑 게이트 — 브리핑 안 뜨는 키워드 컷 (브라우저+캐시). 전멸 방지 폴백
+        # ② 브리핑 게이트 — 브리핑 안 뜨는 키워드 컷. 단 예측 주제(is_forward)는 면제
+        #    (9월엔 아직 브리핑이 안 떠서 — 선점 베팅). 전멸 방지 폴백.
         try:
-            brief = check_briefing(conn, [c["keyword"] for c in short])
-            gated = [c for c in short if brief.get(c["keyword"], True)]
+            brief = check_briefing(conn, [c["keyword"] for c in short if not c.get("is_forward")])
+            gated = [c for c in short if c.get("is_forward") or brief.get(c["keyword"], True)]
             if len(gated) >= n_sel + n_res:
                 short = gated
             else:
@@ -424,6 +500,13 @@ def discover(conn: sqlite3.Connection | None = None) -> list[dict]:
             pick = {"selected": list(range(min(n_sel, len(short)))),
                     "reserve": list(range(n_sel, min(n_sel + n_res, len(short)))),
                     "rationale": "오케스트레이터 실패 — 게이트된 shortlist 상위 폴백"}
+
+        # 예측 주제 최소 1개 강제 포함 — LLM 프롬프트만으론 자주 누락돼 코드로 보장
+        # (윈도우 중 다음 달 신선도 선점이 목적. 2026-08-28)
+        fwd_in_short = [i for i, c in enumerate(short) if c.get("is_forward")]
+        if fwd_in_short and not any(short[i].get("is_forward") for i in pick["selected"]):
+            pick["selected"] = pick["selected"][:n_sel - 1] + [fwd_in_short[0]]
+            pick["rationale"] += " [코드: 다음 달 예측 주제 1개 강제 포함]"
 
         chosen = {short[i]["keyword"]: "selected" for i in pick["selected"]}
         for i in pick["reserve"]:
@@ -440,11 +523,13 @@ def discover(conn: sqlite3.Connection | None = None) -> list[dict]:
 
         for c in top:
             status = chosen.get(c["keyword"], "candidate")
+            # 예측 주제는 rationale에 표식 — DB·리포트에서 선점 발행을 구분해 추적
+            reason = ("[다음달예측] " + c.get("reason", "")) if c.get("is_forward") else c.get("reason", "")
             conn.execute(
                 "INSERT INTO topics (date, keyword, category, search_vol, doc_count, "
                 "golden_score, llm_score, rationale, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (today, c["keyword"], c["category"], c["volume"], c["docs"], c["golden"],
-                 c["llm_score"], c["reason"], status),
+                 c["llm_score"], reason, status),
             )
         # 선정 조합의 근거를 결정 로그에 남긴다 (복기 재료 — 전권 위임의 최소 조건)
         conn.execute(
