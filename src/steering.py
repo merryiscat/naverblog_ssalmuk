@@ -81,6 +81,15 @@ def gather_input(conn: sqlite3.Connection) -> dict:
     ranks = [dict(r) for r in conn.execute(
         "SELECT keyword, rank, ai_cited FROM rankings WHERE date = ?", (today,))]
     metric = conn.execute("SELECT * FROM metrics WHERE date = ?", (today,)).fetchone()
+    # 인용수 일 증분 — 오늘 누적 - 직전 기록된 누적 (리포트에 '오늘 +N'을 찍기 위함, 2026-08-30).
+    # metrics.citations 컬럼 = 누적 인용수 정수(cumulative_n). 위젯이 '100 미만'이면 None이라 건너뛴다.
+    cur_cum = metric["citations"] if metric else None
+    prev_cum_row = conn.execute(
+        "SELECT citations FROM metrics WHERE citations IS NOT NULL AND date < ? "
+        "ORDER BY date DESC LIMIT 1", (today,)).fetchone()
+    prev_cum = prev_cum_row["citations"] if prev_cum_row else None
+    citation_delta = (cur_cum - prev_cum) if (isinstance(cur_cum, int)
+                                              and isinstance(prev_cum, int)) else None
     # AI 검색 검토 상세(색인·브리핑·인용) — rankings에 없는 briefing까지 details_json에서
     ai_review = (json.loads(metric["details_json"]).get("ranks", []) if metric else [])
     from src.competitors import recent_summary  # 순환 임포트 방지 (지연 임포트)
@@ -92,6 +101,7 @@ def gather_input(conn: sqlite3.Connection) -> dict:
         "mate_watch": mate_summary(conn),  # 메이트 선정자 관찰 힌트 (C7, 주 1회 갱신)
         "self_inspection": inspect_summary(conn),  # 블로그 화면 검수 지적 (주 3회 갱신)
         "citations": json.loads(metric["details_json"])["citations"] if metric else None,
+        "citation_delta": citation_delta,  # 전일 대비 인용 증분 (없으면 None)
         "visitors": json.loads(metric["details_json"]).get("visitors") if metric else None,
         "cost_usd": guardrails.month_cost_usd(conn),
         "budget_usd": config.MONTHLY_BUDGET_USD,
@@ -190,7 +200,9 @@ def compose_report(phase: dict, data: dict, decision: dict, applied: list[str]) 
     else:
         lines.append("오늘 발행 없음")
     c = data.get("citations") or {}
-    lines += ["", f"인용수: 누적 {c.get('cumulative', '?')} / 당월 {c.get('this_month', '?')}"]
+    delta = data.get("citation_delta")
+    delta_str = f" (오늘 {delta:+d})" if isinstance(delta, int) else ""
+    lines += ["", f"인용수: 누적 {c.get('cumulative', '?')}{delta_str} / 당월 {c.get('this_month', '?')}"]
     v = data.get("visitors") or {}
     if v:
         lines.append(f"방문자: 오늘 {v.get('today', '?')} / 누적 {v.get('total', '?')}"
