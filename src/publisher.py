@@ -52,6 +52,7 @@ def md_to_html(body_md: str) -> str:
 _MEDIA_NAMES = {
     "namu.wiki": "나무위키", "ko.wikipedia.org": "위키백과", "en.wikipedia.org": "위키백과",
     "n.news.naver.com": "네이버뉴스", "news.naver.com": "네이버뉴스",
+    "sentv.co.kr": "서울경제TV",
     "blog.naver.com": "네이버블로그", "post.naver.com": "네이버포스트",
     "easylaw.go.kr": "찾기쉬운 생활법령정보", "bokjiro.go.kr": "복지로",
     "work24.go.kr": "고용24", "bizinfo.go.kr": "기업마당",
@@ -73,24 +74,26 @@ def _source_label(s: dict) -> str:
 
 
 def _footnotes_to_labels(body_md: str, sources: list[dict]) -> str:
-    """본문의 각주 번호 [n]을 매체명 표기로 변환한다 (2026-08-22).
+    """본문의 각주 번호 [n]을 '그 소스로 가는 하이퍼링크가 걸린 매체명'으로 바꾼다.
 
-    검수 반복 지적 "각주 [1][3][11]이 실링크 없이 원시 텍스트로 노출"의 근본 수정 —
-    독자에겐 번호가 무의미하고, GEO 원칙상 출처 '신호'는 유지해야 하므로
-    번호를 지우는 대신 "(출처: 도메인)"으로 바꾼다. 연속 각주는 하나로 뭉친다.
+    2026-08-22: [n] → "(출처: 도메인)" 평문 (독자에겐 번호가 무의미했던 근본 수정).
+    2026-08-31: 출처가 너무 뭉뚱그려진다는 지적 → 정밀화. (1) 매체명에 그 정확한
+    기사 URL을 하이퍼링크(클릭 검증 가능), (2) '2개+외' 절단 제거(뒷받침 소스 전부 표기).
+    SE ONE이 붙여넣기 링크를 se-link 노드로 보존함을 실측 확인. md_to_html이 인라인
+    <a>를 그대로 통과시키므로 앵커를 직접 emit한다. 소스가 실제 뒷받침하는 번호만 남긴다.
     """
     def run_to_label(match: re.Match) -> str:
-        labels = []
+        parts, seen = [], set()
         for n in re.findall(r"\[(\d+)\]", match.group(0)):
             i = int(n) - 1
-            if 0 <= i < len(sources):
+            if 0 <= i < len(sources) and sources[i].get("url"):
                 lb = _source_label(sources[i])
-                if lb and lb not in labels:
-                    labels.append(lb)
-        if not labels:
+                if lb and lb not in seen:
+                    seen.add(lb)
+                    parts.append(f'<a href="{sources[i]["url"]}">{lb}</a>')
+        if not parts:
             return ""  # 매칭되는 소스가 없는 번호는 그냥 제거
-        tail = " 외" if len(labels) > 2 else ""
-        return "(출처: " + ", ".join(labels[:2]) + tail + ")"
+        return "(출처: " + ", ".join(parts) + ")"
 
     # ① "(출처: [3])"·"(출처: [1], [4])" 형태 — 괄호째 매체명으로 치환
     body = re.sub(r"\(출처:\s*(?:\[\d+\][,\s]*)+\)", run_to_label, body_md)
