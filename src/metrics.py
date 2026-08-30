@@ -93,6 +93,81 @@ def collect_visitors() -> dict:
         return {}
 
 
+def collect_inflow(limit: int = 30) -> dict:
+    """유입검색어·유입경로 수집 — 크리에이터 어드바이저 내부 API (2026-08-30 정찰).
+
+    사람들이 '어떤 검색어로' 우리 글에 들어오는지 = 검색전략(보정)의 재료.
+    - referrer-query-rank: 유입검색어 순위 (data[0].topN[].searchQuery)
+    - referrer-domain: 유입경로 (검색/외부 비율)
+    당일은 아직 집계 중이라 어제(기본) 하루 기준이 안정적. 실패는 비치명(빈 dict).
+    이 API는 로그인·동일출처를 요구하므로 세션 브라우저로 advisor 페이지에서 fetch한다
+    (공개 API인 방문자수와 달리 urllib 직접 호출은 불가 — 정찰 실측).
+    """
+    cid = config.NAVER_BLOG_ID
+    # 직접 fetch는 403(SPA 전용 헤더 필요) — SPA가 스스로 부르는 응답을 리스너로 잡는다.
+    # SPA 기본 조회 구간은 '어제'라 date_str 없이도 어제 데이터가 잡힌다 (정찰 실측).
+    captured = {}
+
+    def _on_resp(resp):
+        u = resp.url
+        if "/api/v6/inflow-analysis/referrer-query-rank" in u and "query" not in captured:
+            try:
+                captured["query"] = resp.json()
+            except Exception:
+                pass
+        elif "/api/v6/inflow-analysis/referrer-domain" in u and "domain" not in captured:
+            try:
+                captured["domain"] = resp.json()
+            except Exception:
+                pass
+
+    try:
+        with sync_playwright() as pl:
+            browser = pl.chromium.launch(headless=True)
+            ctx = browser.new_context(storage_state=str(config.SESSION_PATH),
+                                      user_agent=config.BROWSER_UA)
+            page = ctx.new_page()
+            page.on("response", _on_resp)
+            # #by-rq-count = 유입검색어 뷰 (정찰). 진입만으로 referrer-domain은 자동 호출됨
+            page.goto(f"https://creator-advisor.naver.com/naver_blog/{cid}"
+                      "/inflow-analysis#by-rq-count", timeout=45000, wait_until="networkidle")
+            page.wait_for_timeout(2500)
+            # 유입검색어 API가 아직이면 탭을 눌러 SPA가 호출하게 한다
+            if "query" not in captured:
+                el = page.query_selector("text=유입검색어 분석")
+                if el:
+                    try:
+                        el.click(timeout=3000)
+                    except Exception:
+                        pass
+                    page.wait_for_timeout(3000)
+            browser.close()
+    except Exception as e:
+        print(f"유입 수집 실패 (측정은 계속): {type(e).__name__}: {e}")
+        return {}
+
+    queries, total, d = [], None, None
+    try:
+        rows = (captured.get("query") or {}).get("data") or []
+        if rows:
+            d = rows[0].get("date")
+            total = rows[0].get("totalMetric")
+            for item in (rows[0].get("topN") or [])[:limit]:
+                queries.append({"query": item.get("searchQuery"),
+                                "ratio": round(item.get("ratio") or 0, 4)})
+    except Exception:
+        pass
+    paths = []
+    try:
+        for item in ((captured.get("domain") or {}).get("data") or []):
+            paths.append({"domain": item.get("referrerDomain"),
+                          "search": item.get("isSearchEngine"),
+                          "ratio": round(item.get("ratio") or 0, 4)})
+    except Exception:
+        pass
+    return {"date": d, "total": total, "queries": queries, "paths": paths}
+
+
 def check_rank(keyword: str) -> int | None:
     """블로그 검색 API에서 내 글의 순위 (1-base). 30위 밖이면 None."""
     items = openapi_search("blog", keyword, display=30).get("items", [])
@@ -237,14 +312,16 @@ def collect(conn: sqlite3.Connection | None = None) -> dict:
                 f"(per-keyword 감지는 별개로 점검 필요)")
 
         visitors = collect_visitors()
+        inflow = collect_inflow()  # 유입검색어·유입경로 (검색전략 재료, 2026-08-30)
         conn.execute(
             "INSERT OR REPLACE INTO metrics (date, citations, visitors, details_json) "
             "VALUES (?, ?, ?, ?)",
             (today, cum_now, visitors.get("today"),
-             json.dumps({"citations": citations, "ranks": ranks, "visitors": visitors},
-                        ensure_ascii=False)))
+             json.dumps({"citations": citations, "ranks": ranks, "visitors": visitors,
+                         "inflow": inflow}, ensure_ascii=False)))
         conn.commit()
-        return {"citations": citations, "ranks": ranks, "visitors": visitors}
+        return {"citations": citations, "ranks": ranks, "visitors": visitors,
+                "inflow": inflow}
     finally:
         if own:
             conn.close()

@@ -103,6 +103,7 @@ def gather_input(conn: sqlite3.Connection) -> dict:
         "citations": json.loads(metric["details_json"])["citations"] if metric else None,
         "citation_delta": citation_delta,  # 전일 대비 인용 증분 (없으면 None)
         "visitors": json.loads(metric["details_json"]).get("visitors") if metric else None,
+        "inflow": json.loads(metric["details_json"]).get("inflow") if metric else None,
         "cost_usd": guardrails.month_cost_usd(conn),
         "budget_usd": config.MONTHLY_BUDGET_USD,
         "published_total": conn.execute(
@@ -140,6 +141,10 @@ mate_watch.policy_hints는 실제 메이트 선정자 블로그 분석에서 나
 분야·주제·스타일 방향을 정할 때 참고하라 (confidence가 low면 가볍게만).
 self_inspection은 우리 블로그 실제 화면을 검수한 결과다 — persisting(반복 지적)이
 있으면 alerts로 사람에게 올리고, 글 생성으로 고칠 수 있는 것은 내일 힌트에 반영하라.
+inflow.queries는 사람들이 **실제로 우리 글에 들어올 때 친 검색어**다 (유입경로는 inflow.paths).
+이게 검색전략의 핵심 재료다 — 유입 검색어를 보고 ①어떤 제도·주제가 실제로 검색을 부르는지
+파악해 그 계열을 더 깊게 파고 ②각 검색어의 인접 구체 질문(같은 제도의 다른 조건·대상·상황·서류)을
+tomorrow_hint에 넣어 검색 유입을 넓혀라. 유입 검색어가 특정 제도에 몰리면 그 제도 특화를 권고하라.
 
 JSON만 출력:
 {{"rationale": "오늘 데이터에서 읽은 것과 결정 이유 (2~4문장)",
@@ -207,6 +212,10 @@ def compose_report(phase: dict, data: dict, decision: dict, applied: list[str]) 
     if v:
         lines.append(f"방문자: 오늘 {v.get('today', '?')} / 누적 {v.get('total', '?')}"
                      f" / 이웃 {v.get('subscribers', '?')}")
+    inf = data.get("inflow") or {}
+    if inf.get("queries"):
+        top = " · ".join(q["query"] for q in inf["queries"][:5])
+        lines.append(f"🔎 유입검색어 {inf.get('total', '?')}건 — Top: {top}")
     # AI 검색 검토 결과 — 발행 글마다 색인/브리핑 노출/우리 글 인용 상태를 명확히 (2026-08-24)
     review = data.get("ai_review") or data["ranks"]
     if review:
