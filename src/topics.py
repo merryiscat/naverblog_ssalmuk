@@ -8,8 +8,10 @@
   ④ LLM(판단 모델)이 '정보형 글로 쓸 가치'를 채점 — 골든 점수 상위만 투입
   ⑤ 최종 3개 selected(config.DAILY_SELECT_COUNT), 다음 2개 reserve(config.RESERVE_COUNT)로
      topics 테이블에 기록 — 게이트 탈락 시 스케줄러가 예비 투입
-     (2026-08-22 사용자 결정: 정책·지원금형 2 + 탐색 1 부분 특화, 예비 1→2 확대 —
-     "하루 2건은 실제로 올라가야 한다". 8/21 게이트 전멸이 계기)
+     (2026-08-22: 정책 2 + 탐색 1 부분 특화 → 2026-08-30 완전 정책 특화로 전환
+     [사용자 결정]. 근거: 인용 907·브리핑 15·색인 26/27이 전부 정책 롱테일에서 나왔고,
+     비정책 탐색칸은 인용 0 + 게이트 탈락 다수. 소재 다양성은 정책 내 대상 변형으로 유지.
+     예비 1→2 확대 — "하루 2건은 실제로 올라가야 한다". 8/21 게이트 전멸이 계기)
 """
 
 import json
@@ -205,6 +207,77 @@ def score_longtail(longtails: list[dict], skip: set[str],
 # 월말 이 날짜(포함)부터 다음 달 예측 주제를 발굴에 추가한다 (신선도 선점)
 NEXT_MONTH_PREVIEW_FROM_DAY = 28
 
+# 참조 레퍼런스 블로그 — 정부 정책 공식 블로그(신선·권위 있는 정책 발표 피드).
+# 여기 소식에서 구체 질문형 주제를 뽑는다. mcst_pr = 정책주간지 K-공감(네이버 메이트 206만 인용).
+REFERENCE_BLOGS = ["mcst_pr"]
+
+
+def fetch_reference_titles(blog_id: str, n: int = 15) -> list[str]:
+    """레퍼런스 블로그의 최근 글 제목(+요약 앞부분)을 긁어온다 (비로그인).
+
+    제목만 깔끔히 뽑지 않아도 된다 — LLM이 여기서 주제를 추출하므로 앞부분 스니펫이면 충분.
+    """
+    from playwright.sync_api import sync_playwright  # 지연 임포트
+    titles = []
+    with sync_playwright() as pl:
+        browser = pl.chromium.launch(headless=True)
+        ctx = browser.new_context(user_agent=config.BROWSER_UA)
+        page = ctx.new_page()
+        try:
+            page.goto(f"https://m.blog.naver.com/{blog_id}", timeout=45000)
+            import time
+            time.sleep(3)
+            titles = page.evaluate(
+                """() => {
+                    const posts = [...document.querySelectorAll('a')]
+                        .filter(a => /logNo|\\/\\d{9,}/.test(a.href || ''))
+                        .map(a => a.textContent.replace(/\\s+/g, ' ').trim().slice(0, 90))
+                        .filter(t => t.length > 8);
+                    return [...new Set(posts)];
+                }""")
+        except Exception as e:
+            print(f"레퍼런스 블로그 수집 실패({blog_id}): {type(e).__name__}: {e}")
+        finally:
+            browser.close()
+    return titles[:n]
+
+
+def expand_reference_topics() -> list[dict]:
+    """레퍼런스 블로그(정부 정책 공식)의 최근 소식에서 구체 질문형 주제를 뽑는다.
+
+    실제 정부 발표(신규 지원·제도 변경·접수 시작)를 근거로 하므로 신선·권위 있고,
+    사람들이 곧 검색할 롱테일이다 — 우리가 인용을 선점할 최고의 씨앗 (2026-08-28 사용자 지시).
+    반환: [{keyword, head, why}] — score_longtail이 doc_count·score를 채운다.
+    """
+    snippets = []
+    for bid in REFERENCE_BLOGS:
+        snippets += fetch_reference_titles(bid)
+    if not snippets:
+        return []
+    listing = "\n".join(f"- {s}" for s in snippets[:20])
+    prompt = f"""다음은 정부 정책 공식 블로그의 최근 소식이다. 여기서 **일반 국민이 검색할
+구체 질문형 주제**를 뽑아라 — 우리가 블로그 글로 써서 AI 브리핑 인용을 선점할 씨앗이다.
+
+정부 소식(제목·요약):
+{listing}
+
+규칙:
+- 신규 지원·제도 변경·접수 시작 등 '지원금·정책'에서, 신청조건·대상·금액·기간·달라지는 점 등
+  구체 질문형으로 (예: '도산대지급금 확대' → '도산대지급금 신청 조건', '제대군인 창업대회 지원자격')
+- 검색창에 칠 법한 짧은 질문구(8~20자), 서로 다른 정책으로 {LONGTAIL_TARGET}개
+- 단순 행사·홍보·연예/오락성 소식은 제외 (검색 수요·인용 기회가 작다)
+
+JSON 배열만: [{{"keyword": "...", "source": "어느 정부 소식에서", "why": "왜 검색될지 한 줄"}}]"""
+    raw = llm.chat(config.MODEL_JUDGE, prompt, purpose="reference-topics")
+    raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    out, seen = [], set()
+    for item in json.loads(raw):
+        kw = str(item.get("keyword", "")).strip()
+        if len(kw) >= 5 and kw not in seen:
+            seen.add(kw)
+            out.append({"keyword": kw, "head": "레퍼런스", "why": item.get("why", "")})
+    return out
+
 
 def expand_next_month_forward(when: date | None = None) -> list[dict]:
     """월말에 '다음 달 기준'으로 새로 시행·접수·변경되는 정책·지원금을 미리 예측 발굴한다.
@@ -379,11 +452,15 @@ def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
 
     n_sel = config.DAILY_SELECT_COUNT
     n_res = config.RESERVE_COUNT
+    def _mark(c):
+        if c.get("is_reference"):
+            return "📰[정부발표] "
+        return "🔮[다음달예측] " if c.get("is_forward") else ""
     listing = "\n".join(
-        f"{i}. {'🔮[다음달예측] ' if c.get('is_forward') else ''}[{c['category']}] {c['keyword']} "
+        f"{i}. {_mark(c)}[{c['category']}] {c['keyword']} "
         f"(골든 {c['golden']:.2f} / 채점 {c['llm_score']:.2f} — {c['reason']})"
         for i, c in enumerate(short))
-    has_forward = any(c.get("is_forward") for c in short)
+    has_forward = any(c.get("is_forward") or c.get("is_reference") for c in short)
     prompt = f"""너는 블로그 주제 선정 오케스트레이터다. 오늘 쓸 주제 {n_sel}개(selected)와 예비 {n_res}개(reserve)를 골라라.
 
 선정 원칙 (2026-08-26 사용자 전략 확정 — 구체 질문형 롱테일 집중):
@@ -392,10 +469,13 @@ def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
 이길 수 있는 유일한 자리는 공식이 즉답 못 하는 구체 질문 = 경쟁 얇음+블로그 인용).
 - selected {n_sel}개: **경쟁이 얇고(블로그문서↓) 질문이 구체적인**(조건·예외·계산·서류·차이)
   롱테일을 우선한다. 서로 다른 헤드·상황을 다루도록 골라 주제 중복을 피하라
+- **모든 주제는 정책·지원금이다 (완전 특화, 2026-08-30)** — 비정책 소재는 고르지 마라.
+  대신 대상(청년·소상공인·육아·주거·고용·노인 등)과 제도를 서로 다르게 골라 소재 다양성을 낸다
 - 헤드 단일어(예: "실업급여신청", "여행자보험")는 브리핑에 떠도 인용 못 받으니 피하라
 - reserve {n_res}개도 같은 기준 (게이트 탈락 시 보충용){'''
-- 🔮[다음달예측] 표시는 다음 달에 검색이 급증할 정책 주제다 — 신선한 글로 브리핑 인용을
-  선점하려는 것이니, selected에 1~2개 우선 포함하라 (아직 브리핑이 안 떠도 의도된 선점)''' if has_forward else ''}
+- 📰[정부발표]는 방금 나온 정부 정책(신규 지원·제도 변경)이라 경쟁이 극히 얇고 신선하다 —
+  최우선으로 selected에 포함하라. 🔮[다음달예측]은 다음 달 검색 급증 선점용이니 그다음 우선.
+  (둘 다 아직 브리핑이 안 떠도 의도된 선점 발행이다)''' if has_forward else ''}
 
 전략 컨텍스트:
 - 국면: Phase {phase['phase']} — {phase['why']}
@@ -464,28 +544,50 @@ def discover(conn: sqlite3.Connection | None = None) -> list[dict]:
             except Exception as e:
                 print(f"다음 달 예측 실패 — 건너뜀: {type(e).__name__}: {e}")
 
-        # 예측 → 롱테일 → 헤드 보충으로 후보 풀 구성 → LLM 채점
-        lt_keys = {c["keyword"] for c in forward + longtails}
-        candidates = forward + longtails + [c for c in head_scored if c["keyword"] not in lt_keys]
+        # ①-c 레퍼런스 블로그(정부 정책 공식)에서 신선한 정책 주제 발굴 — 실제 발표가 근거라
+        # 신선·권위 있고 경쟁이 극히 얇다(방금 나온 정책은 아직 아무도 안 씀). 브리핑 게이트
+        # 면제(막 발표돼 아직 안 뜰 수 있어 — 선점). 2026-08-28 사용자 지시.
+        reference = []
+        try:
+            reference = score_longtail(expand_reference_topics(), skip,
+                                       max_docs=LONGTAIL_MAX_DOCS * 2)
+            for r in reference:
+                r["is_reference"] = True
+            print(f"레퍼런스 주제 {len(reference)}개 추가")
+        except Exception as e:
+            print(f"레퍼런스 발굴 실패 — 건너뜀: {type(e).__name__}: {e}")
+
+        # 레퍼런스·예측 → 롱테일 → 헤드 보충으로 후보 풀 구성 → LLM 채점
+        # 완전 정책 특화 (2026-08-30 사용자 결정): 헤드 보충도 정책 분야(라이프·인사이트)만
+        # 남긴다 — 비정책(여행·푸드·미디어 등) 탐색 제거. 소재 다양성은 정책 내 대상 변형
+        # (청년·소상공인·육아·주거·고용 씨앗)으로 유지. 버려진 '비정책 탐색'은 pending 보류.
+        priority = reference + forward
+        lt_keys = {c["keyword"] for c in priority + longtails}
+        candidates = priority + longtails + [c for c in head_scored
+                                             if c["category"] in POLICY_CATEGORIES
+                                             and c["keyword"] not in lt_keys]
         top = score_llm(candidates[:LLM_CANDIDATES])
-        # 예측 먼저, 롱테일 다음, 그다음 채점 높은 순·경쟁 얇은 순
-        top.sort(key=lambda c: (0 if c.get("is_forward") else 1 if c.get("is_longtail") else 2,
-                                -c["llm_score"], c["docs"]))
+        # 레퍼런스(정부 실발표) 먼저, 예측 다음, 롱테일, 그다음 채점·경쟁 순
+        top.sort(key=lambda c: (0 if c.get("is_reference") else 1 if c.get("is_forward")
+                                else 2 if c.get("is_longtail") else 3, -c["llm_score"], c["docs"]))
 
         # 최종 선정 — 오케스트레이터 (실패 시 결정론 폴백)
         n_sel = config.DAILY_SELECT_COUNT
         n_res = config.RESERVE_COUNT
         # 롱테일은 분야가 라이프·인사이트로 겹치므로 per_cat을 넉넉히 (집중 전략)
         short = shortlist(top, size=14, per_cat=6)
-        # shortlist가 llm_score로 재정렬하며 예측 주제를 밀어낼 수 있어 — 앞에 확실히 보강
-        fwd_items = [c for c in top if c.get("is_forward")][:3]
-        short = fwd_items + [c for c in short if c["keyword"] not in {f["keyword"] for f in fwd_items}]
+        # shortlist가 llm_score로 재정렬하며 우선 주제(레퍼런스·예측)를 밀어낼 수 있어 — 앞에 보강
+        prio_items = [c for c in top if c.get("is_reference") or c.get("is_forward")][:5]
+        short = prio_items + [c for c in short
+                              if c["keyword"] not in {p["keyword"] for p in prio_items}]
 
-        # ② 브리핑 게이트 — 브리핑 안 뜨는 키워드 컷. 단 예측 주제(is_forward)는 면제
-        #    (9월엔 아직 브리핑이 안 떠서 — 선점 베팅). 전멸 방지 폴백.
+        # ② 브리핑 게이트 — 브리핑 안 뜨는 키워드 컷. 단 레퍼런스·예측 주제는 면제
+        #    (막 발표돼 아직 브리핑이 안 떠서 — 선점 베팅). 전멸 방지 폴백.
         try:
-            brief = check_briefing(conn, [c["keyword"] for c in short if not c.get("is_forward")])
-            gated = [c for c in short if c.get("is_forward") or brief.get(c["keyword"], True)]
+            def _exempt(c):
+                return c.get("is_forward") or c.get("is_reference")
+            brief = check_briefing(conn, [c["keyword"] for c in short if not _exempt(c)])
+            gated = [c for c in short if _exempt(c) or brief.get(c["keyword"], True)]
             if len(gated) >= n_sel + n_res:
                 short = gated
             else:
@@ -501,12 +603,15 @@ def discover(conn: sqlite3.Connection | None = None) -> list[dict]:
                     "reserve": list(range(n_sel, min(n_sel + n_res, len(short)))),
                     "rationale": "오케스트레이터 실패 — 게이트된 shortlist 상위 폴백"}
 
-        # 예측 주제 최소 1개 강제 포함 — LLM 프롬프트만으론 자주 누락돼 코드로 보장
-        # (윈도우 중 다음 달 신선도 선점이 목적. 2026-08-28)
-        fwd_in_short = [i for i, c in enumerate(short) if c.get("is_forward")]
-        if fwd_in_short and not any(short[i].get("is_forward") for i in pick["selected"]):
-            pick["selected"] = pick["selected"][:n_sel - 1] + [fwd_in_short[0]]
-            pick["rationale"] += " [코드: 다음 달 예측 주제 1개 강제 포함]"
+        # 우선 주제(레퍼런스 정부 발표 > 다음 달 예측) 최소 1개 강제 포함 —
+        # LLM 프롬프트만으론 자주 누락돼 코드로 보장 (신선도 선점. 2026-08-28)
+        prio_in_short = ([i for i, c in enumerate(short) if c.get("is_reference")]
+                         + [i for i, c in enumerate(short) if c.get("is_forward")])
+        already = any(short[i].get("is_reference") or short[i].get("is_forward")
+                      for i in pick["selected"])
+        if prio_in_short and not already:
+            pick["selected"] = pick["selected"][:n_sel - 1] + [prio_in_short[0]]
+            pick["rationale"] += " [코드: 신선 정책 주제 1개 강제 포함]"
 
         chosen = {short[i]["keyword"]: "selected" for i in pick["selected"]}
         for i in pick["reserve"]:
@@ -523,8 +628,10 @@ def discover(conn: sqlite3.Connection | None = None) -> list[dict]:
 
         for c in top:
             status = chosen.get(c["keyword"], "candidate")
-            # 예측 주제는 rationale에 표식 — DB·리포트에서 선점 발행을 구분해 추적
-            reason = ("[다음달예측] " + c.get("reason", "")) if c.get("is_forward") else c.get("reason", "")
+            # 우선 주제는 rationale에 표식 — DB·리포트에서 선점 발행을 구분해 추적
+            tag = ("[레퍼런스] " if c.get("is_reference")
+                   else "[다음달예측] " if c.get("is_forward") else "")
+            reason = tag + c.get("reason", "")
             conn.execute(
                 "INSERT INTO topics (date, keyword, category, search_vol, doc_count, "
                 "golden_score, llm_score, rationale, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
