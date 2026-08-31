@@ -356,7 +356,6 @@ HERO_STYLES = [
     "종이 콜라주 질감의 일러스트, 레이어 느낌",
     "부드러운 그라데이션 배경 위 단순 오브젝트 3D 렌더 느낌",
     "손그림 라인 드로잉에 부분 채색, 여백 많은 구성",
-    "기하학 도형 패턴 중심의 추상 일러스트",
 ]
 HERO_PALETTES = {
     "여행": "청록·모래 베이지 톤", "푸드": "따뜻한 주황·크림 톤", "레시피": "밝은 그린·크림 톤",
@@ -400,8 +399,9 @@ def make_hero_image(title: str, category: str, stem: str,
     # gpt-image-1이 지도(서울·경기도 지명)·체크리스트·돋보기 아이콘 같은 인포그래픽성
     # 요소를 그려 넣어, 비전 게이트가 2회 다 걸러 '이미지 없이 발행'이 잦았다. 게이트는
     # 진짜 글자만 잡고 '텍스트성 도형'(아이콘)은 놓치므로, 소재 자체를 프롬프트로 금지한다.
-    style = (f"{palette}의 {pick}, 블로그 대표 이미지. 순수 장식용 일러스트 — "
-             "주제를 분위기·색감·추상 오브젝트로만 표현한다. "
+    style = (f"{palette}의 {pick}, 블로그 대표 이미지. "
+             "주제를 나타내는 구체적 사물·상징·장면을 담되 오직 그림으로만 표현한다"
+             "(설명 글자 없이) — 글과 한눈에 연결되게. "
              "글자·텍스트·숫자·캡션·제목·워터마크 절대 없음, 브랜드 로고·상표 절대 없음. "
              "지도·약도·차트·그래프·다이어그램·인포그래픽·표·달력 금지"
              "(지명·수치가 딸려 들어온다). "
@@ -410,15 +410,15 @@ def make_hero_image(title: str, category: str, stem: str,
         style += f". 추가 스타일 지침: {style_hint}"
     prompt = f"{style}. 주제: {title} ({category} 분야)"
     try:
-        for attempt in range(2):  # 글자 감지 시 1회 재생성
+        for attempt in range(3):  # 글자 감지 시 재생성 (관련성 프롬프트로 금융 주제 글자↑ — 08-31)
             img = llm.generate_image(prompt, purpose="hero-image", size="1536x1024")
             if not _image_has_text(img):
                 config.ensure_dirs()
                 path = config.IMAGES_DIR / f"{stem}.png"
                 path.write_bytes(img)
                 return str(path)
-            print(f"대표 이미지에 글자 감지 — 재생성 {attempt + 1}/2")
-        print("이미지 글자 게이트 2회 실패 — 이미지 없이 발행")
+            print(f"대표 이미지에 글자 감지 — 재생성 {attempt + 1}/3")
+        print("이미지 글자 게이트 3회 실패 — 이미지 없이 발행")
         return None
     except Exception as e:
         print(f"대표 이미지 생성 실패 (글은 이미지 없이 진행): {type(e).__name__}: {e}")
