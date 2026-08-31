@@ -33,6 +33,30 @@ NAVER_SUBJECT_BY_FIELD = {
     "라이프": "일상·생각", "스타일": "패션·미용", "컬쳐": "공연·전시", "취미": "취미",
 }
 
+# 발행 카테고리 라우팅 — 완전 정책 특화(2026-08-30)에 맞춘 상위 축 4개 (사용자 확정 2026-08-31).
+# 내부 분야(라이프/인사이트)와 분리 — 그건 주제 매핑·팔레트에 그대로 쓰고, 발행 카테고리만
+# 키워드로 아래로 분류한다. 순서=우선순위(위에서 먼저 매칭). '📌 블로그 안내'는 공지·대표글
+# 전용이라 자동 배정하지 않는다. 카테고리명은 사용자가 관리화면에 만들 이름과 정확히 일치해야 한다.
+_PUBLISH_CATEGORY_RULES = [
+    ("퇴직연금·노후자금", ("퇴직연금", "퇴직금", "irp", "dc형", "확정기여", "확정급여",
+                          "중도인출", "연금저축", "국민연금", "노후")),
+    ("소상공인·자영업", ("소상공인", "노란우산", "자영업", "정책자금", "사업자", "창업",
+                        "폐업", "간이과세", "부가세", "하도급")),
+    ("노동·고용", ("실업급여", "4대보험", "주휴수당", "국민취업", "근로장려금", "최저임금",
+                  "고용보험", "육아휴직", "실업", "구직", "퇴사", "연차", "노동")),
+    # 그 외 정책·지원금(출산·육아·청년·에너지·바우처·복지 등)은 기본 카테고리로
+]
+DEFAULT_PUBLISH_CATEGORY = "지원금·수당"
+
+
+def _publish_category(text: str) -> str:
+    """글 키워드·제목으로 발행 카테고리(위 4개 중 하나)를 정한다 — 없으면 기본(지원금·수당)."""
+    t = (text or "").lower()
+    for name, kws in _PUBLISH_CATEGORY_RULES:
+        if any(k in t for k in kws):
+            return name
+    return DEFAULT_PUBLISH_CATEGORY
+
 
 class PublishError(Exception):
     """발행 실패 — 메시지에 원인, 스크린샷 경로 포함 가능."""
@@ -221,7 +245,7 @@ def _verify_public(url: str) -> bool:
             browser.close()
 
 
-def _select_category_and_subject(page, category: str) -> str:
+def _select_category_and_subject(page, category: str, field: str | None) -> str:
     """발행 팝업에서 카테고리(분야명 동일 카테고리)와 주제를 지정한다.
 
     반환: 선택 후 드롭다운 버튼에 실제 표시된 카테고리명 (반영 검증용 — 호출자가
@@ -258,7 +282,8 @@ def _select_category_and_subject(page, category: str) -> str:
         pass
 
     # ② 주제: '주제 선택 안 함 >' 링크 → 매핑된 주제 라벨 → 확인
-    subject = NAVER_SUBJECT_BY_FIELD.get(category)
+    #    주제는 내부 분야(field=라이프/인사이트)로 매핑한다 — 발행 카테고리와 분리(2026-08-31)
+    subject = NAVER_SUBJECT_BY_FIELD.get(field)
     if not subject:
         return shown
     try:
@@ -302,7 +327,7 @@ def publish(post_id: int, conn: sqlite3.Connection | None = None, *,
         guardrails.check_daily_publish_limit(conn)
 
         row = conn.execute(
-            "SELECT p.*, t.category FROM posts p LEFT JOIN topics t ON p.topic_id = t.id "
+            "SELECT p.*, t.category, t.keyword FROM posts p LEFT JOIN topics t ON p.topic_id = t.id "
             "WHERE p.id = ?", (post_id,)).fetchone()
         if not row or row["status"] != "gated":
             raise PublishError(f"발행 대상 아님: post {post_id} (status={row['status'] if row else '없음'})")
@@ -387,11 +412,13 @@ def publish(post_id: int, conn: sqlite3.Connection | None = None, *,
                 # 주제 지정 — 분야→네이버 주제 매핑 (실패해도 발행은 진행)
                 # 선택 후 표시값을 검증해 미일치면 결과에 경고를 싣는다 (8/19~20 전 글이
                 # 기본 카테고리로 발행된 사고의 항체 — 조용한 실패 금지)
+                # 발행 카테고리: 키워드·제목으로 정책 상위 축 4개 중 하나로 라우팅(2026-08-31).
+                # 주제는 내부 분야(category=라이프/인사이트)로 매핑 — 둘을 분리해 넘긴다.
+                pub_category = _publish_category(f"{row['keyword'] or ''} {title}")
+                shown = _select_category_and_subject(page, pub_category, category)
                 category_warn = None
-                if category:
-                    shown = _select_category_and_subject(page, category)
-                    if shown != category:
-                        category_warn = f"카테고리 미반영 (목표 {category} / 실제 {shown or '기본값'})"
+                if shown != pub_category:
+                    category_warn = f"카테고리 미반영 (목표 {pub_category} / 실제 {shown or '기본값'})"
 
                 # 태그 입력 (선택)
                 for tag in (tags or [])[:5]:
