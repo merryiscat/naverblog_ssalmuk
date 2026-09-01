@@ -12,3 +12,12 @@ data/
 
 # Playwright MCP 브라우저 스냅샷 (세션 작업 부산물)
 .playwright-mcp/
+
+# .env 변형 파일도 차단 (.env.local 등) — 단, 키 없는 견본은 커밋 허용
+.env.*
+!.env.example
+
+# OS 잡파일
+Thumbs.db
+Desktop.ini
+.DS_Store
