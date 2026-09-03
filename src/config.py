@@ -94,6 +94,7 @@ MODEL_STEER = "gpt-5.4"         # 일일 자가 보정 (최상위 판단)
 MODEL_AGENT = "gpt-5.4-mini"    # 메이트 관찰 에이전트 (도구 사용·탐색 판단)
 MODEL_INSPECTOR = "gpt-5.4-mini"  # 블로그 검수 에이전트 (스크린샷 비전 검수)
 MODEL_IMAGE = "gpt-image-1"       # 대표 이미지 생성
+MODEL_EMBED = "text-embedding-3-small"  # 콘텐츠 메모리 임베딩 (글 의미 조회, 2026-09-04)
 
 # 1M 토큰당 달러 단가: (입력, 출력). 비용 적산(llm.py)에 쓴다.
 PRICES_PER_MTOK = {
@@ -104,6 +105,7 @@ PRICES_PER_MTOK = {
     "gpt-4.1": (2.00, 8.00),
     "gpt-4.1-mini": (0.40, 1.60),
     "gpt-4.1-nano": (0.10, 0.40),
+    "text-embedding-3-small": (0.02, 0.0),  # 임베딩은 입력만 과금
 }
 
 # 이미지 1장당 추정 비용(달러) — 실제 단가는 크기·품질에 따라 다르므로

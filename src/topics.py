@@ -452,13 +452,28 @@ def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
 
     n_sel = config.DAILY_SELECT_COUNT
     n_res = config.RESERVE_COUNT
+    # 콘텐츠 메모리 — 후보마다 '유사 과거 발행글'을 의미로 조회해 중복 방지·인용받은 유형 우선
+    # 판단에 쓴다 (2026-09-04 로드맵 #5). 실패는 비치명 — 조회 없이도 선정은 진행.
+    from src import memory
+    for c in short:
+        try:
+            rel = memory.retrieve(conn, c["keyword"], k=1, min_sim=0.5)
+            c["_dup"] = rel[0] if rel else None
+        except Exception:
+            c["_dup"] = None
     def _mark(c):
         if c.get("is_reference"):
             return "📰[정부발표] "
         return "🔮[다음달예측] " if c.get("is_forward") else ""
+    def _dup(c):
+        d = c.get("_dup")
+        if not d:
+            return ""
+        tag = "인용받은 " if d.get("ai_cited") else ""
+        return f"  ⚠유사 과거글({tag}sim {d['sim']}): {(d['title'] or '')[:24]}"
     listing = "\n".join(
         f"{i}. {_mark(c)}[{c['category']}] {c['keyword']} "
-        f"(골든 {c['golden']:.2f} / 채점 {c['llm_score']:.2f} — {c['reason']})"
+        f"(골든 {c['golden']:.2f} / 채점 {c['llm_score']:.2f} — {c['reason']}){_dup(c)}"
         for i, c in enumerate(short))
     has_forward = any(c.get("is_forward") or c.get("is_reference") for c in short)
     prompt = f"""너는 블로그 주제 선정 오케스트레이터다. 오늘 쓸 주제 {n_sel}개(selected)와 예비 {n_res}개(reserve)를 골라라.
@@ -472,6 +487,9 @@ def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
 - **모든 주제는 정책·지원금이다 (완전 특화, 2026-08-30)** — 비정책 소재는 고르지 마라.
   대신 대상(청년·소상공인·육아·주거·고용·노인 등)과 제도를 서로 다르게 골라 소재 다양성을 낸다
 - 헤드 단일어(예: "실업급여신청", "여행자보험")는 브리핑에 떠도 인용 못 받으니 피하라
+- **⚠유사 과거글 표식**: 이미 발행한 글과 의미가 겹친다는 뜻. 거의 같은 각도면 중복이니 피하고,
+  같은 제도라도 다른 각도·대상·상황이면 OK. **'인용받은' 유사글이 있는 계열은 잘 되는 유형**이니
+  서로 다른 각도로 더 파도 좋다(단 판박이 재탕은 금지).
 - reserve {n_res}개도 같은 기준 (게이트 탈락 시 보충용){'''
 - 📰[정부발표]는 방금 나온 정부 정책(신규 지원·제도 변경)이라 경쟁이 극히 얇고 신선하다 —
   최우선으로 selected에 포함하라. 🔮[다음달예측]은 다음 달 검색 급증 선점용이니 그다음 우선.

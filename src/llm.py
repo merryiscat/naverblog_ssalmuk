@@ -73,6 +73,26 @@ def chat(model: str, prompt: str, *, purpose: str, system: str | None = None) ->
         conn.close()
 
 
+def embed(text: str, *, purpose: str = "content-memory",
+          model: str | None = None) -> list[float]:
+    """텍스트 임베딩 벡터를 반환한다 — 콘텐츠 메모리 색인·조회용 (2026-09-04).
+
+    chat과 같은 게이트: 호출 전 예산 검사, 호출 후 비용 적산.
+    """
+    model = model or config.MODEL_EMBED
+    conn = db.connect()
+    try:
+        guardrails.check_monthly_budget(conn)
+        resp = _get_client().embeddings.create(model=model, input=text[:8000])
+        tokens_in = resp.usage.prompt_tokens if resp.usage else 0
+        price_in, _ = config.PRICES_PER_MTOK.get(model, (0.02, 0.0))
+        cost = tokens_in * price_in / 1_000_000
+        _record_cost(conn, "embed", model, tokens_in, 0, cost, purpose)
+        return resp.data[0].embedding
+    finally:
+        conn.close()
+
+
 def chat_tools(model: str, messages: list, tools: list, *, purpose: str,
                tool_choice: str = "auto"):
     """도구(function calling) 지원 호출 — 에이전트 루프용.

@@ -139,6 +139,14 @@ CREATE TABLE IF NOT EXISTS costs (
     purpose     TEXT                        -- 무엇을 위한 호출이었나 (예: 'topic-scoring')
 );
 
+-- 콘텐츠 메모리(2026-09-04): 발행 글 임베딩 색인 → '관련 과거 글' 의미 조회 (memory.py)
+CREATE TABLE IF NOT EXISTS post_embeddings (
+    post_id     INTEGER PRIMARY KEY,           -- posts.id (1:1)
+    model       TEXT NOT NULL,                 -- 임베딩 모델
+    vec         TEXT NOT NULL,                 -- 임베딩 벡터 (JSON 배열)
+    indexed_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_costs_ts ON costs(ts);
 CREATE INDEX IF NOT EXISTS idx_posts_published ON posts(published_at);
 -- 같은 날 같은 글의 측정은 한 행 (재실행 시 갱신) — C5 리포트 중복 방지

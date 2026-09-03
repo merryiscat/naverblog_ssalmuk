@@ -464,6 +464,13 @@ def publish(post_id: int, conn: sqlite3.Connection | None = None, *,
             "published_at=datetime('now', 'localtime') WHERE id=?", (url, post_id))
         conn.commit()
 
+        # 콘텐츠 메모리 색인 — 발행 즉시 임베딩해 다음 발굴이 '관련 과거 글'로 조회 (2026-09-04)
+        try:
+            from src import memory
+            memory.index_post(conn, post_id)
+        except Exception as e:
+            print(f"콘텐츠 메모리 색인 실패 (발행은 완료): {type(e).__name__}: {e}")
+
         if _verify_public(url):
             conn.execute(
                 "UPDATE posts SET status='verified', verified_at=datetime('now', 'localtime') "
