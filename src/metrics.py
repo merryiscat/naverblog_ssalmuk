@@ -28,14 +28,22 @@ MY_BLOG_PREFIX = f"blog.naver.com/{config.NAVER_BLOG_ID}"
 
 
 def _parse_count(raw: str) -> int | None:
-    """'100 미만' → None, '1,234' → 1234."""
-    m = re.search(r"[\d,]+", raw or "")
-    if not m or "미만" in (raw or ""):
+    """'100 미만' → None, '1,234' → 1234, '3.2천' → 3200, '1.4천' → 1400, '1.2만' → 12000.
+
+    네이버가 1000 이상은 '3.2천'·'1.2만'으로 축약 표기한다(2026-09-03 인용수 3.2천 발견) —
+    한글 단위를 곱해 정수로. 축약이라 근사값(±단위 절반)이지만 None보다 낫다.
+    """
+    if not raw or "미만" in raw:
+        return None
+    m = re.match(r"\s*([\d.,]+)\s*([천만])?", raw)
+    if not m:
         return None
     try:
-        return int(m.group().replace(",", ""))
+        num = float(m.group(1).replace(",", ""))
     except ValueError:
         return None
+    unit = {"천": 1000, "만": 10000}.get(m.group(2), 1)
+    return int(round(num * unit))
 
 
 def collect_citations(page) -> dict:
@@ -58,12 +66,14 @@ def collect_citations(page) -> dict:
     # ⚠ 값과 다음 라벨 사이에 공백이 없을 수 있다("...130 8월...130 6월..." → "1306월")
     # → 다음 라벨의 '월 숫자'를 알아야 값 경계를 안다. 당월·기준월(당월-2)을 계산해
     # lookahead로 경계를 고정한다 (2026-08-26: 8월 인용수 130이 1306으로 오파싱된 버그 항체).
+    # ⚠ 값은 '907'·'1,234'뿐 아니라 '3.2천'·'1.2만' 축약형일 수 있다(2026-09-03: 3.2천 발견).
+    _V = r"[\d,]+\s*미만|[\d.,]+\s*[천만]|[\d,]+"  # 미만 / 천·만 축약 / 평문 숫자
     mon = date.today().month
     basis = mon - 2 if mon > 2 else mon + 10
     for key, pat in (
-        ("cumulative", rf"누적 인용수\s*:\s*([\d,]+\s*미만|[\d,]+?)(?=\s*{mon}월|\s*$)"),
-        ("this_month", rf"{mon}월 인용수\s*:\s*([\d,]+\s*미만|[\d,]+?)(?=\s*{basis}월|\s*\(|\s*$)"),
-        ("basis_month", r"선정 기준\)\s*:\s*([\d,]+\s*미만|[\d,]+)"),
+        ("cumulative", rf"누적 인용수\s*:\s*({_V})(?=\s*{mon}월|\s*$)"),
+        ("this_month", rf"{mon}월 인용수\s*:\s*({_V})(?=\s*{basis}월|\s*\(|\s*$)"),
+        ("basis_month", rf"선정 기준\)\s*:\s*({_V})"),
     ):
         m = re.search(pat, tip)
         if m:
