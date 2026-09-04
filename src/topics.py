@@ -45,9 +45,11 @@ DEFAULT_SEEDS_BY_CATEGORY = {
 POLICY_CATEGORIES = ("라이프", "인사이트")
 # 롱테일 확장 목표 수, 롱테일 경쟁 상한(이보다 문서 많으면 롱테일 의미 없음),
 # 브리핑 확인 예산, 브리핑 캐시 유효기간(일)
-LONGTAIL_TARGET = 16
+# 2026-09-04 풀 확대: 16→24 / 브리핑예산 12→16 — near-dup 하드 컷(판박이 제거) 후에도
+# 신선 후보가 선정수보다 많이 남게(오늘 후보 7=선정7로 여유 0이던 문제 대응).
+LONGTAIL_TARGET = 24
 LONGTAIL_MAX_DOCS = 30_000
-BRIEFING_BUDGET = 12
+BRIEFING_BUDGET = 16
 BRIEFING_CACHE_DAYS = 14
 
 # 쿼리 예산 — 문서수 조회(검색 API)는 검색량 상위 이 개수만
@@ -461,6 +463,24 @@ def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
             c["_dup"] = rel[0] if rel else None
         except Exception:
             c["_dup"] = None
+    # 하드 near-dup 컷 (2026-09-04): 판박이(sim≥0.6)는 8월 재탕이므로 후보에서 아예 제거한다
+    # (레퍼런스·예측은 신선 선점이라 면제). 남은 게 선정수보다 적으면 컷 완화(유사도 낮은 순).
+    NEAR_DUP = 0.6
+    def _is_dup(c):
+        d = c.get("_dup")
+        return bool(d and d["sim"] >= NEAR_DUP
+                    and not c.get("is_reference") and not c.get("is_forward"))
+    fresh = [c for c in short if not _is_dup(c)]
+    dropped = len(short) - len(fresh)
+    if len(fresh) >= n_sel:
+        short = fresh
+    elif fresh:  # 신선분이 선정수보다 적음 — 있는 신선분 + 덜 겹치는 순으로 보충
+        rest = sorted((c for c in short if _is_dup(c)),
+                      key=lambda c: c["_dup"]["sim"])
+        short = fresh + rest[:max(0, n_sel + n_res - len(fresh))]
+        print(f"⚠ near-dup 컷 후 신선 {len(fresh)}개뿐(<{n_sel}) — 풀이 얇다, 컷 완화")
+    if dropped:
+        print(f"판박이 near-dup {dropped}개 제거(sim≥{NEAR_DUP})")
     def _mark(c):
         if c.get("is_reference"):
             return "📰[정부발표] "
