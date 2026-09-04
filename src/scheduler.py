@@ -393,6 +393,14 @@ def main():
         for job in scheduler.get_jobs():
             print(f"  {job.id:<14} {job.trigger}")
         return
+    # 운영 대시보드 — 데몬 스레드로 상시 서빙 (2026-09-04, 로드맵 #1).
+    # 읽기 전용·LAN 내부라 스케줄러 프로세스에 얹어도 위험 낮음. 실패해도 파이프라인은 계속.
+    try:
+        import threading
+        from src import dashboard
+        threading.Thread(target=dashboard.serve, daemon=True).start()
+    except Exception as e:
+        print(f"대시보드 기동 실패 (파이프라인은 계속): {type(e).__name__}: {e}")
     notify.send("🟢 파이프라인 상주 시작 — 하루 일과가 자동으로 돕니다")
     print("스케줄러 상주 시작 (Ctrl+C로 중단)")
     scheduler.start()
