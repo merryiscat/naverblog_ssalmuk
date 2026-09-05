@@ -81,6 +81,62 @@ def _chart(vals, labels=None, w=440, h=140, color="#2a6") -> str:
             f'<circle cx="{X(xs[-1]):.1f}" cy="{Y(ys[-1]):.1f}" r="3.5" fill="{color}"/>{xax}</svg>')
 
 
+def _deltas(vals) -> list:
+    """누적 시계열 → 일별 증가량. 앞뒤 값이 다 숫자일 때만 차이, 아니면 None."""
+    out, prev = [], None
+    for v in vals:
+        if isinstance(v, (int, float)) and isinstance(prev, (int, float)):
+            out.append(v - prev)
+        else:
+            out.append(None)
+        if isinstance(v, (int, float)):
+            prev = v
+    return out
+
+
+def _bars(vals, labels=None, w=440, h=140, color="#2a6") -> str:
+    """일별 값(성장 속도) 막대 차트 — 0 기준선 + y눈금 + x날짜. 값 없는 날은 건너뜀."""
+    idx = [(i, v) for i, v in enumerate(vals) if isinstance(v, (int, float))]
+    if not idx:
+        return '<div class="muted nodata">데이터 부족</div>'
+    ys = [v for _, v in idx]
+    ymax = max(ys + [0])
+    ymin = min(ys + [0])
+    yr = (ymax - ymin) or 1
+    pl, pr, pt, pb = 42, 10, 12, 22
+    nslots = len(vals)
+    slotw = (w - pl - pr) / max(nslots, 1)
+    bw = slotw * 0.6
+
+    def X(i):
+        return pl + (i + 0.5) * slotw
+
+    def Y(v):
+        return h - pb - (v - ymin) / yr * (h - pt - pb)
+
+    y0 = Y(0)
+    bars = "".join(
+        f'<rect x="{X(i) - bw / 2:.1f}" y="{min(Y(v), y0):.1f}" width="{bw:.1f}" '
+        f'height="{max(abs(Y(v) - y0), 0.5):.1f}" fill="{color}" rx="1.5"/>'
+        for i, v in idx)
+    grid = ""
+    for val in (ymin, (ymin + ymax) / 2 if ymin < 0 else ymax / 2, ymax):
+        y = Y(val)
+        grid += (f'<line x1="{pl}" y1="{y:.1f}" x2="{w - pr}" y2="{y:.1f}" stroke="#eef1f3"/>'
+                 f'<text x="{pl - 6}" y="{y + 3:.1f}" text-anchor="end" '
+                 f'font-size="9.5" fill="#a3acb4">{_n(int(round(val)))}</text>')
+    xax = ""
+    if labels:
+        first, last = idx[0][0], idx[-1][0]
+        mid = idx[len(idx) // 2][0]
+        for i, anc in ((first, "start"), (mid, "middle"), (last, "end")):
+            if 0 <= i < len(labels) and labels[i]:
+                xax += (f'<text x="{X(i):.1f}" y="{h - 6:.1f}" text-anchor="{anc}" '
+                        f'font-size="9.5" fill="#a3acb4">{labels[i]}</text>')
+    return (f'<svg viewBox="0 0 {w} {h}" width="{w}" height="{h}" class="chartsvg">{grid}'
+            f'{bars}{xax}</svg>')
+
+
 def _card(label, value, sub=""):
     return (f'<div class="card"><div class="clabel">{label}</div>'
             f'<div class="cval">{value}</div><div class="csub">{sub}</div></div>')
@@ -148,8 +204,8 @@ def _stats_html(conn) -> str:
     return f"""
 <div class="cards">{cards}</div>
 <div class="two">
-  <section><h2>누적 인용 추이 (14일)</h2>{_chart(cites, dates, color="#2a6")}</section>
-  <section><h2>방문자 추이 (14일)</h2>{_chart(visits, dates, color="#3a7bd5")}</section>
+  <section><h2>일일 인용 증가 (14일) — 성장 속도</h2>{_bars(_deltas(cites), dates, color="#2a6")}</section>
+  <section><h2>일일 방문자 (14일)</h2>{_bars(visits, dates, color="#3a7bd5")}</section>
 </div>
 <div class="two">
   <section><h2>유입 검색어 Top</h2><ul>{inflow_rows}</ul></section>
@@ -254,7 +310,7 @@ def _overview_html(blogs) -> str:
             f'<span><b>{_n(cit.get("cumulative","-"))}</b> 누적 인용</span>'
             f'<span><b>{_n(latest["visitors"] if latest else "-")}</b> 방문</span>'
             f'<span><b>{pub_today}</b> 오늘 발행</span></div>'
-            f'<div class="ochart">{_chart(cites, odates, w=380, h=104, color="#2a6")}</div></a>')
+            f'<div class="ochart">{_bars(_deltas(cites), odates, w=380, h=104, color="#2a6")}</div></a>')
     return f'<div class="head"><h1>전체 현황</h1></div><div class="overview">{cards}</div>'
 
 
