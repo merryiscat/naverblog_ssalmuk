@@ -41,15 +41,15 @@ def _n(v) -> str:
     return str(v) if v is not None else "-"
 
 
-def _chart(vals, w=440, h=132, color="#2a6") -> str:
-    """제대로 된 추이 차트 — 영역 채움 + 선 + y축 눈금(min/mid/max) + 그리드 + 끝점 마커."""
+def _chart(vals, labels=None, w=440, h=140, color="#2a6") -> str:
+    """추이 차트 — 영역 + 선 + y축 눈금 + 그리드 + 끝점 마커 + x축 날짜(labels)."""
     pts = [(i, v) for i, v in enumerate(vals) if isinstance(v, (int, float))]
     if len(pts) < 2:
         return '<div class="muted nodata">데이터 부족</div>'
     xs, ys = [p[0] for p in pts], [p[1] for p in pts]
     xmin, xmax, ymin, ymax = min(xs), max(xs), min(ys), max(ys)
     xr, yr = (xmax - xmin) or 1, (ymax - ymin) or 1
-    pl, pr, pt, pb = 42, 10, 10, 8
+    pl, pr, pt, pb = 42, 10, 12, 22  # 아래 여백 = x축 날짜 자리
 
     def X(x):
         return pl + (x - xmin) / xr * (w - pl - pr)
@@ -66,11 +66,19 @@ def _chart(vals, w=440, h=132, color="#2a6") -> str:
         grid += (f'<line x1="{pl}" y1="{y:.1f}" x2="{w - pr}" y2="{y:.1f}" stroke="#eef1f3"/>'
                  f'<text x="{pl - 6}" y="{y + 3:.1f}" text-anchor="end" '
                  f'font-size="9.5" fill="#a3acb4">{_n(int(round(val)))}</text>')
+    # x축 날짜 — 첫·중간·끝 점 (labels는 vals와 같은 인덱스)
+    xax = ""
+    if labels:
+        mid = pts[len(pts) // 2][0]
+        for i, anc in ((xs[0], "start"), (mid, "middle"), (xs[-1], "end")):
+            if 0 <= i < len(labels) and labels[i]:
+                xax += (f'<text x="{X(i):.1f}" y="{h - 6:.1f}" text-anchor="{anc}" '
+                        f'font-size="9.5" fill="#a3acb4">{labels[i]}</text>')
     return (f'<svg viewBox="0 0 {w} {h}" width="{w}" height="{h}" class="chartsvg">{grid}'
             f'<polygon points="{area}" fill="{color}" opacity="0.10"/>'
             f'<polyline points="{line}" fill="none" stroke="{color}" '
             f'stroke-width="2.5" stroke-linejoin="round"/>'
-            f'<circle cx="{X(xs[-1]):.1f}" cy="{Y(ys[-1]):.1f}" r="3.5" fill="{color}"/></svg>')
+            f'<circle cx="{X(xs[-1]):.1f}" cy="{Y(ys[-1]):.1f}" r="3.5" fill="{color}"/>{xax}</svg>')
 
 
 def _card(label, value, sub=""):
@@ -103,11 +111,11 @@ def _stats_html(conn) -> str:
     rows = _metrics(conn)
     cites = [r["citations"] for r in rows]
     visits = [r["visitors"] for r in rows]
+    dates = [(r["date"] or "")[5:] for r in rows]  # MM-DD (x축 라벨)
     latest = rows[-1] if rows else None
     det = json.loads(latest["details_json"]) if latest and latest["details_json"] else {}
     cit = det.get("citations") or {}
     inflow = det.get("inflow") or {}
-    ranks = det.get("ranks") or []
 
     pub_total = conn.execute(
         "SELECT COUNT(*) c FROM posts WHERE status IN ('published','verified')").fetchone()["c"]
@@ -125,10 +133,6 @@ def _stats_html(conn) -> str:
         _card("오늘 발행", str(pub_today), f"누적 {pub_total}"),
         _card("이달 비용", f"${cost:.2f}", f"예산 ${config.MONTHLY_BUDGET_USD:.2f}"),
     ])
-    n = len(ranks)
-    n_idx = sum(1 for r in ranks if r.get("indexed"))
-    n_br = sum(1 for r in ranks if r.get("briefing"))
-    n_ci = sum(1 for r in ranks if r.get("cited") or r.get("ai_cited"))
     inflow_rows = "".join(f"<li>{q.get('query','')}</li>"
                           for q in (inflow.get("queries") or [])[:10]) or "<li class='muted'>없음</li>"
     recent = list(conn.execute(
@@ -144,10 +148,9 @@ def _stats_html(conn) -> str:
     return f"""
 <div class="cards">{cards}</div>
 <div class="two">
-  <section><h2>누적 인용 추이 (14일)</h2>{_chart(cites, color="#2a6")}</section>
-  <section><h2>방문자 추이 (14일)</h2>{_chart(visits, color="#3a7bd5")}</section>
+  <section><h2>누적 인용 추이 (14일)</h2>{_chart(cites, dates, color="#2a6")}</section>
+  <section><h2>방문자 추이 (14일)</h2>{_chart(visits, dates, color="#3a7bd5")}</section>
 </div>
-<section><h2>AI 검색 검토 — 색인 {n_idx}/{n} · 브리핑 노출 {n_br} · 우리글 인용 {n_ci}</h2></section>
 <div class="two">
   <section><h2>유입 검색어 Top</h2><ul>{inflow_rows}</ul></section>
   <section><h2>최근 발행 글</h2><table>{recent_rows}</table></section>
@@ -235,6 +238,7 @@ def _overview_html(blogs) -> str:
         try:
             rows = _metrics(conn)
             cites = [r["citations"] for r in rows]
+            odates = [(r["date"] or "")[5:] for r in rows]
             latest = rows[-1] if rows else None
             det = json.loads(latest["details_json"]) if latest and latest["details_json"] else {}
             cit = det.get("citations") or {}
@@ -250,7 +254,7 @@ def _overview_html(blogs) -> str:
             f'<span><b>{_n(cit.get("cumulative","-"))}</b> 누적 인용</span>'
             f'<span><b>{_n(latest["visitors"] if latest else "-")}</b> 방문</span>'
             f'<span><b>{pub_today}</b> 오늘 발행</span></div>'
-            f'<div class="ochart">{_chart(cites, w=380, h=90, color="#2a6")}</div></a>')
+            f'<div class="ochart">{_chart(cites, odates, w=380, h=104, color="#2a6")}</div></a>')
     return f'<div class="head"><h1>전체 현황</h1></div><div class="overview">{cards}</div>'
 
 
