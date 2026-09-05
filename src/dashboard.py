@@ -9,6 +9,7 @@
 """
 
 import json
+import re
 import sqlite3
 from collections import Counter, OrderedDict
 from datetime import date
@@ -125,14 +126,14 @@ def _bars(vals, labels=None, w=440, h=140, color="#2a6") -> str:
         grid += (f'<line x1="{pl}" y1="{y:.1f}" x2="{w - pr}" y2="{y:.1f}" stroke="#eef1f3"/>'
                  f'<text x="{pl - 6}" y="{y + 3:.1f}" text-anchor="end" '
                  f'font-size="9.5" fill="#a3acb4">{_n(int(round(val)))}</text>')
+    # x축 날짜 — 막대 중앙(X(i))에 middle 정렬로 균등 배치(약 5개). 어느 막대=어느 날 명확히.
     xax = ""
     if labels:
-        first, last = idx[0][0], idx[-1][0]
-        mid = idx[len(idx) // 2][0]
-        for i, anc in ((first, "start"), (mid, "middle"), (last, "end")):
-            if 0 <= i < len(labels) and labels[i]:
-                xax += (f'<text x="{X(i):.1f}" y="{h - 6:.1f}" text-anchor="{anc}" '
-                        f'font-size="9.5" fill="#a3acb4">{labels[i]}</text>')
+        step = max(1, -(-len(vals) // 5))
+        for i in range(0, len(vals), step):
+            if i < len(labels) and labels[i]:
+                xax += (f'<text x="{X(i):.1f}" y="{h - 6:.1f}" text-anchor="middle" '
+                        f'font-size="9" fill="#a3acb4">{labels[i]}</text>')
     return (f'<svg viewBox="0 0 {w} {h}" width="{w}" height="{h}" class="chartsvg">{grid}'
             f'{bars}{xax}</svg>')
 
@@ -159,6 +160,65 @@ def _src_of(rationale: str) -> str:
     if "[다음달예측]" in r:
         return "다음달예측"
     return "시드 롱테일"
+
+
+# 주제 식별에 도움 안 되는 흔한 토큰 (제목·검색어에 공통으로 껴서 오매칭 유발)
+_STOP = {"2026년", "2026", "기준", "총정리", "방법", "정리", "조건", "안내", "및", "상황별",
+         "최신", "현황", "가이드", "신청", "핵심", "때", "후기", "무엇", "얼마"}
+
+
+def _topic_tokens(s):
+    return {t for t in re.findall(r"[가-힣a-z0-9]{2,}", (s or "").lower()) if t not in _STOP}
+
+
+_inflow_cache = {}
+
+
+def _inflow_token_groups(conn, queries):
+    """폴백 — 주제 토큰 겹침으로 유입 검색어를 글에 매핑(API 없이)."""
+    posts = [(p["title"], p["category"], _topic_tokens(p["title"]))
+             for p in conn.execute(
+                 "SELECT p.title, t.category FROM posts p LEFT JOIN topics t ON p.topic_id=t.id "
+                 "WHERE p.status IN ('published','verified')")]
+    groups = {}
+    for q in queries:
+        kw = q.get("query", "")
+        qt = _topic_tokens(kw)
+        best, score = None, 0
+        for title, cat, tk in posts:
+            s = len(qt & tk)
+            if s > score:
+                best, score = (title, cat), s
+        key = best if (best and score >= 1) else ("(매칭 글 없음)", None)
+        groups.setdefault(key, []).append(kw)
+    return groups
+
+
+def _inflow_by_post(conn, queries) -> list:
+    """유입 검색어를 '의미가 가장 가까운 발행 글'로 매핑해 글별로 묶는다.
+
+    콘텐츠 메모리(임베딩)로 의미 매칭 — 토큰 정확일치가 놓치는 변형(노란우산↔노란우산공제,
+    dc퇴직금↔퇴직연금 중도인출)까지 잡는다. 검색어 집합 단위로 캐시(매 로드 재임베딩 방지).
+    임베딩 실패(키 없음 등) 시 토큰 폴백. 반환: [(제목, 분야, [검색어...])] 유입 많은 순 = 인기 주제.
+    """
+    key = tuple(sorted(q.get("query", "") for q in queries))
+    if key in _inflow_cache:
+        return _inflow_cache[key]
+    groups = None
+    try:
+        from src import memory
+        groups = {}
+        for q in queries:
+            kw = q.get("query", "")
+            hits = memory.retrieve(conn, kw, k=1, min_sim=0.32)
+            gk = (hits[0]["title"], hits[0].get("category")) if hits else ("(매칭 글 없음)", None)
+            groups.setdefault(gk, []).append(kw)
+    except Exception as e:
+        print(f"유입 의미매핑 실패 — 토큰 폴백: {type(e).__name__}: {e}")
+        groups = _inflow_token_groups(conn, queries)
+    result = [(k2[0], k2[1], v) for k2, v in sorted(groups.items(), key=lambda kv: -len(kv[1]))]
+    _inflow_cache[key] = result
+    return result
 
 
 # --- 통계 뷰 ---------------------------------------------------------------
@@ -189,8 +249,12 @@ def _stats_html(conn) -> str:
         _card("오늘 발행", str(pub_today), f"누적 {pub_total}"),
         _card("이달 비용", f"${cost:.2f}", f"예산 ${config.MONTHLY_BUDGET_USD:.2f}"),
     ])
-    inflow_rows = "".join(f"<li>{q.get('query','')}</li>"
-                          for q in (inflow.get("queries") or [])[:10]) or "<li class='muted'>없음</li>"
+    igroups = _inflow_by_post(conn, (inflow.get("queries") or [])[:15])
+    inflow_html = "".join(
+        f'<div class="ig"><div class="ig-h">{(title or "")[:46]}'
+        f'<span class="ig-n">{len(qs)}건</span></div>'
+        f'<div class="ig-q">{" · ".join(qs)}</div></div>'
+        for title, cat, qs in igroups) or '<div class="muted">유입 데이터 없음</div>'
     recent = list(conn.execute(
         "SELECT p.title, t.category, date(p.published_at) d, "
         "(SELECT MAX(ai_cited) FROM rankings r WHERE r.post_id=p.id) cited "
@@ -207,10 +271,9 @@ def _stats_html(conn) -> str:
   <section><h2>일일 인용 증가 (14일) — 성장 속도</h2>{_bars(_deltas(cites), dates, color="#2a6")}</section>
   <section><h2>일일 방문자 (14일)</h2>{_bars(visits, dates, color="#3a7bd5")}</section>
 </div>
-<div class="two">
-  <section><h2>유입 검색어 Top</h2><ul>{inflow_rows}</ul></section>
-  <section><h2>최근 발행 글</h2><table>{recent_rows}</table></section>
-</div>"""
+<section><h2>유입 키워드 → 인기 주제 (어느 글이 어떤 검색어로 유입되나 · 많은 순)</h2>
+  <div class="igs">{inflow_html}</div></section>
+<section><h2>최근 발행 글</h2><table>{recent_rows}</table></section>"""
 
 
 # --- 파이프라인 뷰 ---------------------------------------------------------
@@ -412,6 +475,12 @@ def render_page(blog_key: str = "policy", view: str = "stats") -> str:
  .day ul {{ padding-left:0; list-style:none; }}
  .day li {{ font-size:12px; margin:3px 0; }}
  .tag {{ font-size:10px; background:#eaf3ee; color:#2a6; border-radius:4px; padding:1px 5px; margin-right:4px; }}
+ .igs {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:10px; }}
+ .ig {{ border:1px solid var(--line); border-radius:8px; padding:8px 11px; }}
+ .ig-h {{ font-weight:700; font-size:12.5px; display:flex; justify-content:space-between;
+         gap:8px; align-items:baseline; }}
+ .ig-n {{ color:var(--accent); font-weight:700; font-size:12px; white-space:nowrap; }}
+ .ig-q {{ color:var(--muted); font-size:11.5px; margin-top:3px; line-height:1.55; }}
  .overview {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:12px; }}
  a.ocard {{ display:block; background:var(--panel); border:1px solid var(--line); border-radius:10px;
            padding:14px 16px; text-decoration:none; color:var(--fg); }}
