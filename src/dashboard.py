@@ -15,11 +15,24 @@ from urllib.parse import urlparse, parse_qs
 
 from src import config, db
 
-# 관리 블로그 목록 — 멀티블로그(#2) 오면 프로필 기반으로 바뀐다. 지금은 하드코딩.
-BLOGS = [
-    {"key": "policy", "name": "정책브리핑 가이드", "platform": "네이버", "live": True},
-    {"key": "legal", "name": "법률 유권해석", "platform": "티스토리 · 준비중", "live": False},
+# 블로그 레지스트리 — data/blogs.json에서 읽는다(추가·제거·이름 변경은 이 파일로, 코드 수정 X).
+# 멀티블로그(#2)의 프로필도 이 레지스트리를 공유 근거로 쓴다. 파일 없으면 기본값.
+_DEFAULT_BLOGS = [
+    {"key": "policy", "name": "정책브리핑 가이드", "platform": "네이버", "active": True},
+    {"key": "legal", "name": "법률 유권해석", "platform": "티스토리 · 준비중", "active": False},
 ]
+
+
+def _load_blogs() -> list:
+    try:
+        path = config.DATA_DIR / "blogs.json"
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, list) and data:
+                return data
+    except Exception:
+        pass
+    return _DEFAULT_BLOGS
 
 
 def _n(v) -> str:
@@ -183,16 +196,17 @@ def _arrow():
 # --- 페이지 조립 -----------------------------------------------------------
 
 def render_page(blog_key: str = "policy", view: str = "stats") -> str:
-    blog = next((b for b in BLOGS if b["key"] == blog_key), BLOGS[0])
+    blogs = _load_blogs()
+    blog = next((b for b in blogs if b["key"] == blog_key), blogs[0])
 
     side = "".join(
         f'<a class="blog {"active" if b["key"]==blog["key"] else ""} '
-        f'{"" if b["live"] else "off"}" href="?blog={b["key"]}">'
+        f'{"" if b.get("active", True) else "off"}" href="?blog={b["key"]}">'
         f'<span class="name">{b["name"]}</span>'
         f'<span class="plat">{b["platform"]}</span></a>'
-        for b in BLOGS)
+        for b in blogs)
 
-    if not blog["live"]:
+    if not blog.get("active", True):
         main = ('<div class="placeholder"><h1>' + blog["name"] + '</h1>'
                 '<p class="muted">' + blog["platform"] + ' — 로드맵 #2에서 구축 예정.<br>'
                 '티스토리 법률 블로그(애드센스·구글 트래픽). 콘텐츠 코어는 정책 블로그와 공유, '
