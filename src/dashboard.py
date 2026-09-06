@@ -271,7 +271,7 @@ def _stats_html(conn) -> str:
   <section><h2>일일 인용 증가 (14일) — 성장 속도</h2>{_bars(_deltas(cites), dates, color="#2a6")}</section>
   <section><h2>일일 방문자 (14일)</h2>{_bars(visits, dates, color="#3a7bd5")}</section>
 </div>
-<section><h2>유입 키워드 → 인기 주제 (어느 글이 어떤 검색어로 유입되나 · 많은 순)</h2>
+<section><h2>유입 키워드</h2>
   <div class="igs">{inflow_html}</div></section>
 <section><h2>최근 발행 글</h2><table>{recent_rows}</table></section>"""
 
@@ -377,6 +377,105 @@ def _overview_html(blogs) -> str:
     return f'<div class="head"><h1>전체 현황</h1></div><div class="overview">{cards}</div>'
 
 
+# --- 보고 아카이브 (텔레그램 푸시 보고들) ---------------------------------
+
+def _esc(s) -> str:
+    """HTML에 넣기 전 위험문자만 최소 escape (<, >, &)."""
+    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _reports_html(conn) -> str:
+    """텔레그램으로 푸시되는 보고들의 아카이브 — 최근 것부터.
+
+    사람이 2일마다 검토할 때, 텔레그램 텍스트 덩어리 대신 스캔 가능한 카드로 본다.
+    데이터 출처: decisions(야간 보정)·inspections(검수)·mate_watch(메이트 관찰) 테이블.
+    각 카드 = 그날 텔레그램으로 보낸 보고의 알맹이(요약·경보·내일 힌트·지적·정책 힌트).
+    """
+    items = []  # (정렬키=created_at, 카드 html)
+
+    def card(dt, dstr, kind_cls, kind_label, body_parts):
+        return (dt or dstr, f'<div class="rpt"><div class="rpt-h">{_esc(dstr)}'
+                f'<span class="rk {kind_cls}">{kind_label}</span></div>'
+                f'<div class="rpt-b">{"".join(body_parts)}</div></div>')
+
+    def ul(cls, xs):
+        return (f'<ul class="{cls}">' if cls else "<ul>") + \
+            "".join(f"<li>{_esc(x)}</li>" for x in xs) + "</ul>"
+
+    # 1) 일일 보정 리포트 — decisions 중 야간 보정(dj에 'decision' 키가 있는 행만)
+    for r in conn.execute("SELECT date, decision_json, created_at FROM decisions "
+                          "ORDER BY id DESC LIMIT 40").fetchall():
+        try:
+            dj = json.loads(r["decision_json"] or "{}")
+        except Exception:
+            continue
+        dec = dj.get("decision")
+        if not isinstance(dec, dict):
+            continue  # 주제발굴·검수후속 결정은 여기 대상 아님
+        b = []
+        if dec.get("rationale"):
+            b.append(f'<div class="rl">요약</div><p>{_esc(dec["rationale"])}</p>')
+        hint = dec.get("tomorrow_hint") or {}
+        if hint.get("explore") or hint.get("exploit"):
+            inner = []
+            if hint.get("explore"):
+                inner.append(f'<p><b>넓히기</b> {_esc(hint["explore"])}</p>')
+            if hint.get("exploit"):
+                inner.append(f'<p><b>키우기</b> {_esc(hint["exploit"])}</p>')
+            b.append('<details><summary>내일 힌트 (펼치기)</summary>'
+                     + "".join(inner) + '</details>')
+        if dec.get("alerts"):
+            b.append('<div class="rl">사람 개입 경보</div>' + ul("alert", dec["alerts"]))
+        if dj.get("applied"):
+            b.append('<div class="rl">적용</div>' + ul("", dj["applied"]))
+        items.append(card(r["created_at"], r["date"], "boost", "일일 보정", b))
+
+    # 2) 검수 보고 — inspections
+    for r in conn.execute("SELECT date, report_json, created_at FROM inspections "
+                          "ORDER BY id DESC LIMIT 12").fetchall():
+        try:
+            rep = json.loads(r["report_json"] or "{}")
+        except Exception:
+            continue
+        b = []
+        if rep.get("overall"):
+            b.append(f'<div class="rl">총평</div><p>{_esc(rep["overall"])}</p>')
+        if rep.get("issues"):
+            b.append('<div class="rl">지적</div><ul class="alert">')
+            for it in rep["issues"]:
+                b.append(f'<li><b>[{_esc(it.get("severity",""))}]</b> '
+                         f'{_esc(it.get("what",""))}<br>'
+                         f'<span class="muted">고침: {_esc(it.get("fix",""))}</span></li>')
+            b.append('</ul>')
+        if rep.get("persisting"):
+            b.append('<div class="rl">지속 문제</div>' + ul("", rep["persisting"]))
+        if rep.get("resolved"):
+            b.append('<div class="rl">해결됨</div>' + ul("pos", rep["resolved"]))
+        items.append(card(r["created_at"], r["date"], "insp", "검수", b))
+
+    # 3) 메이트 관찰 — mate_watch
+    for r in conn.execute("SELECT date, report_json, created_at FROM mate_watch "
+                          "ORDER BY id DESC LIMIT 6").fetchall():
+        try:
+            rep = json.loads(r["report_json"] or "{}")
+        except Exception:
+            continue
+        b = []
+        if rep.get("policy_hints"):
+            b.append('<div class="rl">정책 힌트</div>' + ul("", rep["policy_hints"]))
+        if rep.get("mate_news"):
+            b.append('<details><summary>메이트 소식 (펼치기)</summary>'
+                     + ul("", rep["mate_news"]) + '</details>')
+        items.append(card(r["created_at"], r["date"], "mate", "메이트 관찰", b))
+
+    if not items:
+        return '<section><div class="muted nodata">보고 기록이 아직 없습니다.</div></section>'
+    items.sort(key=lambda x: x[0] or "", reverse=True)
+    cards = "".join(h for _, h in items[:24])
+    return ('<section><h2>텔레그램 보고 — 최근 순 (일일 보정 · 검수 · 메이트 관찰)</h2>'
+            f'<div class="rpts">{cards}</div></section>')
+
+
 # --- 페이지 조립 -----------------------------------------------------------
 
 def render_page(blog_key: str = "policy", view: str = "stats") -> str:
@@ -405,13 +504,18 @@ def render_page(blog_key: str = "policy", view: str = "stats") -> str:
     else:
         conn = db.connect()
         try:
-            content = _pipeline_html(conn) if view == "pipeline" else _stats_html(conn)
+            if view == "pipeline":
+                content = _pipeline_html(conn)
+            elif view == "reports":
+                content = _reports_html(conn)
+            else:
+                content = _stats_html(conn)
         finally:
             conn.close()
         tabs = "".join(
             f'<a class="tab {"active" if view==v else ""}" '
             f'href="?blog={blog["key"]}&view={v}">{label}</a>'
-            for v, label in (("stats", "통계"), ("pipeline", "파이프라인")))
+            for v, label in (("stats", "통계"), ("pipeline", "파이프라인"), ("reports", "보고")))
         main = (f'<div class="head"><h1>{blog["name"]} '
                 f'<span class="plat">{blog["platform"]}</span></h1>'
                 f'<div class="tabs">{tabs}</div></div>{content}')
@@ -475,12 +579,27 @@ def render_page(blog_key: str = "policy", view: str = "stats") -> str:
  .day ul {{ padding-left:0; list-style:none; }}
  .day li {{ font-size:12px; margin:3px 0; }}
  .tag {{ font-size:10px; background:#eaf3ee; color:#2a6; border-radius:4px; padding:1px 5px; margin-right:4px; }}
- .igs {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:10px; }}
+ .igs {{ display:flex; flex-direction:column; gap:8px; }}
  .ig {{ border:1px solid var(--line); border-radius:8px; padding:8px 11px; }}
  .ig-h {{ font-weight:700; font-size:12.5px; display:flex; justify-content:space-between;
          gap:8px; align-items:baseline; }}
  .ig-n {{ color:var(--accent); font-weight:700; font-size:12px; white-space:nowrap; }}
  .ig-q {{ color:var(--muted); font-size:11.5px; margin-top:3px; line-height:1.55; }}
+ .rpts {{ display:flex; flex-direction:column; gap:10px; }}
+ .rpt {{ border:1px solid var(--line); border-radius:9px; padding:11px 14px; background:#fafbfc; }}
+ .rpt-h {{ font-weight:700; font-size:13px; display:flex; align-items:center; gap:8px; margin-bottom:6px; }}
+ .rk {{ font-size:10.5px; font-weight:700; border-radius:5px; padding:1px 7px; }}
+ .rk.boost {{ background:#e8f0fe; color:#2b57c9; }}
+ .rk.insp {{ background:#fdeee8; color:#c1580f; }}
+ .rk.mate {{ background:#eef7f0; color:#2a6; }}
+ .rl {{ font-size:10.5px; font-weight:700; color:var(--muted); margin-top:8px; }}
+ .rpt-b details {{ margin:6px 0; }}
+ .rpt-b summary {{ font-size:11px; font-weight:700; color:var(--accent); cursor:pointer; }}
+ .rpt-b p {{ margin:2px 0 6px; font-size:12.5px; color:#333; line-height:1.6; }}
+ .rpt-b ul {{ margin:2px 0 6px; padding-left:18px; }}
+ .rpt-b li {{ font-size:12.5px; margin:3px 0; line-height:1.55; }}
+ ul.alert li {{ color:#b23b16; }}
+ ul.pos li {{ color:#2a6; }}
  .overview {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:12px; }}
  a.ocard {{ display:block; background:var(--panel); border:1px solid var(--line); border-radius:10px;
            padding:14px 16px; text-decoration:none; color:var(--fg); }}
