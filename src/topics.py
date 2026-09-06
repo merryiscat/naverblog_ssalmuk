@@ -443,6 +443,35 @@ def shortlist(scored: list[dict], size: int = 10, per_cat: int = 2) -> list[dict
     return out
 
 
+# 주제 계열(클러스터) 판정 — 같은 제도를 다른 각도로 매일 재탕하는 걸 막는다 (2026-09-06,
+# 사용자 지적 "어제도 난임휴가인데 오늘도 난임휴가?"). 임베딩 유사도만으론 못 가른다:
+# 실측상 '난임 며칠'(과거글과 sim 0.47)과 진짜 다른 '국민연금'(0.47)이 같은 점수라 임계값으로
+# 못 나눈다. 계열을 실제로 가르는 신호는 '앞 어절'이다 — 난임휴가/난임치료휴가는 앞 2글자
+# '난임'이 겹치고, 국민연금/퇴직연금은 앞 어절이 안 겹친다. 인구·범용 접두는 계열이 아니라 제외.
+_GENERIC_LEAD = {"국민", "청년", "정부", "서울", "전국", "기초", "저소득", "한부모",
+                 "다자녀", "노인", "영유아", "지원금", "생활", "복지", "긴급"}
+
+
+def _lead(kw: str) -> str:
+    """주제어의 앞 어절(계열 핵심). '난임휴가 며칠' → '난임휴가'."""
+    parts = (kw or "").split()
+    return parts[0] if parts else (kw or "")
+
+
+def _same_cluster(a: str, b: str) -> bool:
+    """두 주제어가 같은 제도 계열인가 — 앞 어절의 공통 접두가 2글자 이상이면 계열로 본다
+    ('난임휴가'·'난임치료휴가'는 '난임'이 겹쳐 같은 계열). 단 범용·인구 접두는 계열로 안 친다."""
+    la, lb = _lead(a), _lead(b)
+    if not la or not lb:
+        return False
+    p = 0
+    for x, y in zip(la, lb):
+        if x != y:
+            break
+        p += 1
+    return p >= 2 and la[:p] not in _GENERIC_LEAD
+
+
 def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
     """선정 오케스트레이터 — 점수 상위가 아니라 '전략에 맞는 조합'을 고른다.
 
@@ -459,6 +488,15 @@ def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
     gate_skips = [r["keyword"] for r in conn.execute(
         "SELECT DISTINCT t.keyword FROM posts p JOIN topics t ON p.topic_id = t.id "
         "WHERE p.status = 'skipped' AND p.created_at >= datetime('now', 'localtime', '-7 days')")]
+    # 최근 발행한 주제 계열 — 같은 제도를 며칠 연속 재탕하지 않도록 쿨다운 (2026-09-06).
+    # near-dup 컷은 정부발표(신선)를 면제하지만, 이미 우리가 최근에 쓴 계열이면 신선이 아니라
+    # 재탕이므로 여기엔 레퍼런스·예측도 포함해 막는다.
+    CLUSTER_COOLDOWN_DAYS = 3
+    recent_pub = [r["keyword"] for r in conn.execute(
+        "SELECT DISTINCT t.keyword FROM posts p JOIN topics t ON p.topic_id = t.id "
+        "WHERE p.status IN ('published', 'verified') AND t.keyword IS NOT NULL "
+        "AND p.published_at >= datetime('now', 'localtime', ?)",
+        (f'-{CLUSTER_COOLDOWN_DAYS} days',)).fetchall()]
 
     n_sel = config.DAILY_SELECT_COUNT
     n_res = config.RESERVE_COUNT
@@ -478,17 +516,21 @@ def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
         d = c.get("_dup")
         return bool(d and d["sim"] >= NEAR_DUP
                     and not c.get("is_reference") and not c.get("is_forward"))
-    fresh = [c for c in short if not _is_dup(c)]
+    # 계열 재탕 컷 — 최근 3일 발행한 제도 계열이면 정부발표(면제 대상)라도 제거한다
+    def _cluster_repeat(c):
+        return any(_same_cluster(c["keyword"], pk) for pk in recent_pub)
+    fresh = [c for c in short if not _is_dup(c) and not _cluster_repeat(c)]
     dropped = len(short) - len(fresh)
     if len(fresh) >= n_sel:
         short = fresh
     elif fresh:  # 신선분이 선정수보다 적음 — 있는 신선분 + 덜 겹치는 순으로 보충
-        rest = sorted((c for c in short if _is_dup(c)),
-                      key=lambda c: c["_dup"]["sim"])
+        fresh_ids = {id(c) for c in fresh}
+        rest = sorted((c for c in short if id(c) not in fresh_ids),
+                      key=lambda c: (c.get("_dup") or {}).get("sim", 0.5))
         short = fresh + rest[:max(0, n_sel + n_res - len(fresh))]
-        print(f"⚠ near-dup 컷 후 신선 {len(fresh)}개뿐(<{n_sel}) — 풀이 얇다, 컷 완화")
+        print(f"⚠ near-dup·계열 컷 후 신선 {len(fresh)}개뿐(<{n_sel}) — 풀이 얇다, 컷 완화")
     if dropped:
-        print(f"판박이 near-dup {dropped}개 제거(sim≥{NEAR_DUP})")
+        print(f"재탕 후보 {dropped}개 제거(near-dup sim≥{NEAR_DUP} 또는 최근 발행 계열)")
     def _mark(c):
         if c.get("is_reference"):
             return "📰[정부발표] "
@@ -526,6 +568,7 @@ def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
 전략 컨텍스트:
 - 국면: Phase {phase['phase']} — {phase['why']}
 - 최근 7일 선정 분야 분포: {', '.join(recent_cats) or '없음'}
+- **최근 3일 발행한 계열(재탕 금지)**: {', '.join(sorted(set(_lead(k) for k in recent_pub))) or '없음'} — 같은 제도를 다른 각도로도 다시 고르지 마라
 - 최근 게이트 차단 키워드: {', '.join(gate_skips) or '없음'} — 같은 유형 재선정을 피하라
 - 보정(C5)의 내일 힌트: {json.dumps(hint, ensure_ascii=False)}
 - 브랜드·기업명 단독 키워드는 선정 금지
@@ -543,9 +586,27 @@ JSON만 출력: {{"selected": [0, 1, 2], "reserve": [3, 4], "rationale": "선정
     res = [int(i) for i in (res_raw if isinstance(res_raw, list) else [res_raw])][:n_res]
     if len(sel) < n_sel or any(not (0 <= i < len(short)) for i in sel + res):
         raise ValueError(f"오케스트레이터 응답 이상: {pick}")
+    # 하루 내 같은 계열 중복 제거 (2026-09-06) — '난임 며칠'+'난임 유급'을 같은 날 둘 다
+    # 뽑는 것 방지. selected 우선순위를 유지하며 계열이 겹치면 건너뛰고, 빠진 자리는
+    # reserve→남은 후보로 채운 뒤 다시 selected/reserve로 나눈다.
+    order = sel + res + [i for i in range(len(short)) if i not in sel and i not in res]
+    picks, leads = [], []
+    for i in order:
+        kw = short[i]["keyword"]
+        if any(_same_cluster(kw, k) for k in leads):
+            continue
+        leads.append(kw)
+        picks.append(i)
+        if len(picks) >= n_sel + n_res:
+            break
+    sel, res = picks[:n_sel], picks[n_sel:n_sel + n_res]
     # 분야 분산 강제는 제거 (2026-08-26): 구체 질문형 롱테일 집중 전략으로 전환하면서
     # selected가 라이프·인사이트(정책)로 쏠리는 것은 의도된 결과다.
-    return {"selected": sel, "reserve": res, "rationale": pick.get("rationale", "")}
+    # 인덱스가 아니라 키워드로 반환한다 (2026-09-06): 위에서 short를 계열·near-dup으로
+    # 재정렬하므로, 인덱스를 돌려주면 호출자의 원본 short와 어긋난다(과거 잠복 버그).
+    return {"selected": [short[i]["keyword"] for i in sel],
+            "reserve": [short[i]["keyword"] for i in res],
+            "rationale": pick.get("rationale", "")}
 
 
 def discover(conn: sqlite3.Connection | None = None) -> list[dict]:
@@ -641,28 +702,30 @@ def discover(conn: sqlite3.Connection | None = None) -> list[dict]:
         except Exception as e:
             print(f"브리핑 게이트 실패 — 게이트 없이 진행: {type(e).__name__}: {e}")
         try:
-            pick = orchestrate_selection(conn, short)
+            pick = orchestrate_selection(conn, short)  # 키워드 리스트로 반환
         except Exception as e:
             print(f"오케스트레이터 실패 — 결정론 폴백: {type(e).__name__}: {e}")
             # short는 이미 롱테일·브리핑 순으로 정렬·게이트됨 — 상위에서 순서대로
-            pick = {"selected": list(range(min(n_sel, len(short)))),
-                    "reserve": list(range(n_sel, min(n_sel + n_res, len(short)))),
+            pick = {"selected": [c["keyword"] for c in short[:n_sel]],
+                    "reserve": [c["keyword"] for c in short[n_sel:n_sel + n_res]],
                     "rationale": "오케스트레이터 실패 — 게이트된 shortlist 상위 폴백"}
 
         # 우선 주제(레퍼런스 정부 발표 > 다음 달 예측) 최소 1개 강제 포함 —
-        # LLM 프롬프트만으론 자주 누락돼 코드로 보장 (신선도 선점. 2026-08-28)
-        prio_in_short = ([i for i, c in enumerate(short) if c.get("is_reference")]
-                         + [i for i, c in enumerate(short) if c.get("is_forward")])
-        already = any(short[i].get("is_reference") or short[i].get("is_forward")
-                      for i in pick["selected"])
-        if prio_in_short and not already:
-            pick["selected"] = pick["selected"][:n_sel - 1] + [prio_in_short[0]]
+        # LLM 프롬프트만으론 자주 누락돼 코드로 보장 (신선도 선점. 2026-08-28).
+        # 단 이미 선정된 계열과 겹치는 것으로 채우지 않는다 (계열 재탕 방지, 2026-09-06).
+        prio_kw = ([c["keyword"] for c in short if c.get("is_reference")]
+                   + [c["keyword"] for c in short if c.get("is_forward")])
+        sel_set = set(pick["selected"])
+        if prio_kw and not any(k in sel_set for k in prio_kw):
+            keep = pick["selected"][:n_sel - 1]
+            add = next((k for k in prio_kw
+                        if not any(_same_cluster(k, s) for s in keep)), prio_kw[0])
+            pick["selected"] = keep + [add]
             pick["rationale"] += " [코드: 신선 정책 주제 1개 강제 포함]"
 
-        chosen = {short[i]["keyword"]: "selected" for i in pick["selected"]}
-        for i in pick["reserve"]:
-            if 0 <= i < len(short):
-                chosen.setdefault(short[i]["keyword"], "reserve")
+        chosen = {kw: "selected" for kw in pick["selected"]}
+        for kw in pick["reserve"]:
+            chosen.setdefault(kw, "reserve")
         # 검증기 교체 등으로 reserve가 selected와 겹치면 다음 후보로 보충 (n_res개 확보)
         have_res = sum(1 for v in chosen.values() if v == "reserve")
         for c in short:
