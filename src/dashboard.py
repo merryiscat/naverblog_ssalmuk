@@ -75,11 +75,19 @@ def _chart(vals, labels=None, w=440, h=140, color="#2a6") -> str:
             if 0 <= i < len(labels) and labels[i]:
                 xax += (f'<text x="{X(i):.1f}" y="{h - 6:.1f}" text-anchor="{anc}" '
                         f'font-size="9.5" fill="#a3acb4">{labels[i]}</text>')
+    def _lab(i):
+        return labels[i] if labels and i < len(labels) and labels[i] else str(i)
+    # 각 점: 작은 마커를 먼저 그리고, 그 위에 넓은 투명 원(hover 영역)을 올린다 — 투명 원이
+    # 맨 위라 포인터를 받아 data-t 툴팁이 점 중앙에서도 뜬다(마커가 hover를 가로채지 않게).
+    dots = "".join(
+        f'<circle cx="{X(x):.1f}" cy="{Y(y):.1f}" r="2.6" fill="{color}"/>'
+        f'<circle cx="{X(x):.1f}" cy="{Y(y):.1f}" r="8" fill="transparent" '
+        f'data-t="{_lab(x)} · {_n(y)}"/>'
+        for x, y in pts)
     return (f'<svg viewBox="0 0 {w} {h}" width="{w}" height="{h}" class="chartsvg">{grid}'
             f'<polygon points="{area}" fill="{color}" opacity="0.10"/>'
             f'<polyline points="{line}" fill="none" stroke="{color}" '
-            f'stroke-width="2.5" stroke-linejoin="round"/>'
-            f'<circle cx="{X(xs[-1]):.1f}" cy="{Y(ys[-1]):.1f}" r="3.5" fill="{color}"/>{xax}</svg>')
+            f'stroke-width="2.5" stroke-linejoin="round"/>{dots}{xax}</svg>')
 
 
 def _deltas(vals) -> list:
@@ -95,8 +103,20 @@ def _deltas(vals) -> list:
     return out
 
 
+def _cumsum(vals) -> list:
+    """일별 값 → 누적 합 시계열. 숫자 아닌 날은 직전 누적을 유지(꺾은선 연속)."""
+    out, run = [], None
+    for v in vals:
+        if isinstance(v, (int, float)):
+            run = (run or 0) + v
+        out.append(run)
+    return out
+
+
 def _bars(vals, labels=None, w=440, h=140, color="#2a6") -> str:
-    """일별 값(성장 속도) 막대 차트 — 0 기준선 + y눈금 + x날짜. 값 없는 날은 건너뜀."""
+    """일별 값(성장 속도) 막대 차트 — 0 기준선 + y눈금 + x날짜. 값 없는 날은 건너뜀.
+
+    각 막대에 data-t="날짜 · 값"을 달아 마우스 hover 시 수치 툴팁이 뜨게 한다(페이지 JS가 처리)."""
     idx = [(i, v) for i, v in enumerate(vals) if isinstance(v, (int, float))]
     if not idx:
         return '<div class="muted nodata">데이터 부족</div>'
@@ -116,9 +136,13 @@ def _bars(vals, labels=None, w=440, h=140, color="#2a6") -> str:
         return h - pb - (v - ymin) / yr * (h - pt - pb)
 
     y0 = Y(0)
+
+    def _lab(i):
+        return labels[i] if labels and i < len(labels) and labels[i] else str(i)
     bars = "".join(
         f'<rect x="{X(i) - bw / 2:.1f}" y="{min(Y(v), y0):.1f}" width="{bw:.1f}" '
-        f'height="{max(abs(Y(v) - y0), 0.5):.1f}" fill="{color}" rx="1.5"/>'
+        f'height="{max(abs(Y(v) - y0), 0.5):.1f}" fill="{color}" rx="1.5" '
+        f'data-t="{_lab(i)} · {_n(v)}"/>'
         for i, v in idx)
     grid = ""
     for val in (ymin, (ymin + ymax) / 2 if ymin < 0 else ymax / 2, ymax):
@@ -136,6 +160,18 @@ def _bars(vals, labels=None, w=440, h=140, color="#2a6") -> str:
                         f'font-size="9" fill="#a3acb4">{labels[i]}</text>')
     return (f'<svg viewBox="0 0 {w} {h}" width="{w}" height="{h}" class="chartsvg">{grid}'
             f'{bars}{xax}</svg>')
+
+
+def _chart_toggle(title, daily_vals, cum_vals, labels, color) -> str:
+    """탭으로 '일일 증가(막대)'와 '누적(꺾은선)'을 전환하는 차트 카드. 전환·툴팁은 페이지 JS."""
+    daily = _bars(daily_vals, labels, color=color)
+    cum = _chart(cum_vals, labels, color=color)
+    return (f'<section><div class="chart-head"><h2>{title}</h2>'
+            f'<div class="ctabs"><button class="ctab active" data-mode="daily">일일 증가</button>'
+            f'<button class="ctab" data-mode="cum">누적</button></div></div>'
+            f'<div class="chart-body">'
+            f'<div class="cv" data-mode="daily">{daily}</div>'
+            f'<div class="cv" data-mode="cum" hidden>{cum}</div></div></section>')
 
 
 def _card(label, value, sub=""):
@@ -268,8 +304,8 @@ def _stats_html(conn) -> str:
     return f"""
 <div class="cards">{cards}</div>
 <div class="two">
-  <section><h2>일일 인용 증가 (14일) — 성장 속도</h2>{_bars(_deltas(cites), dates, color="#2a6")}</section>
-  <section><h2>일일 방문자 (14일)</h2>{_bars(visits, dates, color="#3a7bd5")}</section>
+  {_chart_toggle("인용 (14일)", _deltas(cites), cites, dates, "#2a6")}
+  {_chart_toggle("방문자 (14일)", visits, _cumsum(visits), dates, "#3a7bd5")}
 </div>
 <section><h2>유입 키워드</h2>
   <div class="igs">{inflow_html}</div></section>
@@ -559,6 +595,17 @@ def render_page(blog_key: str = "policy", view: str = "stats") -> str:
  h2 {{ font-size:12.5px; color:var(--muted); margin:0 0 8px; font-weight:600; }}
  .two {{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }}
  .chartsvg {{ width:100%; height:auto; display:block; }}
+ .chart-head {{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; gap:8px; }}
+ .chart-head h2 {{ margin:0; }}
+ .ctabs {{ display:flex; gap:4px; }}
+ .ctab {{ font-size:11px; font-weight:600; color:var(--muted); background:var(--panel);
+         border:1px solid var(--line); border-radius:20px; padding:2px 10px; cursor:pointer; }}
+ .ctab.active {{ background:var(--fg); color:#fff; border-color:var(--fg); }}
+ .cv[hidden] {{ display:none; }}
+ [data-t] {{ cursor:pointer; }}
+ .tt {{ position:fixed; z-index:50; background:#1e242b; color:#fff; font-size:11.5px;
+       font-weight:600; padding:3px 8px; border-radius:6px; pointer-events:none; white-space:nowrap; }}
+ .tt[hidden] {{ display:none; }}
  .nodata {{ padding:24px 0; text-align:center; }}
  .muted {{ color:var(--muted); }}
  ul {{ margin:0; padding-left:18px; }} li {{ margin:2px 0; }}
@@ -614,7 +661,35 @@ def render_page(blog_key: str = "policy", view: str = "stats") -> str:
 </style></head><body><div class="app">
 <aside class="sidebar"><div class="brand">운영 대시보드</div>{side}</aside>
 <main>{main}</main>
-</div></body></html>"""
+</div>
+<div id="tt" class="tt" hidden></div>
+<script>
+(function(){{
+  var tt=document.getElementById('tt');
+  document.addEventListener('mouseover',function(e){{
+    var t=e.target.closest('[data-t]'); if(!t)return;
+    tt.textContent=t.getAttribute('data-t'); tt.hidden=false;
+  }});
+  document.addEventListener('mousemove',function(e){{
+    if(tt.hidden)return;
+    tt.style.left=(e.clientX+12)+'px'; tt.style.top=(e.clientY+14)+'px';
+  }});
+  document.addEventListener('mouseout',function(e){{
+    if(e.target.closest('[data-t]')) tt.hidden=true;
+  }});
+  document.querySelectorAll('.ctabs').forEach(function(tabs){{
+    tabs.addEventListener('click',function(e){{
+      var b=e.target.closest('.ctab'); if(!b)return;
+      var sec=tabs.closest('section'), mode=b.getAttribute('data-mode');
+      tabs.querySelectorAll('.ctab').forEach(function(x){{x.classList.toggle('active',x===b);}});
+      sec.querySelectorAll('.cv').forEach(function(cv){{
+        cv.hidden = cv.getAttribute('data-mode')!==mode;
+      }});
+    }});
+  }});
+}})();
+</script>
+</body></html>"""
 
 
 class _Handler(BaseHTTPRequestHandler):

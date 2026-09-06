@@ -65,6 +65,9 @@ def _do_GET(self):
 dashboard._Handler.do_GET = _do_GET
 
 if __name__ == "__main__":
+    # 포트는 DASH_PORT 환경변수로 바꿀 수 있다 (기본 8765). 다른 프로젝트 개발 서버가
+    # 8765를 이미 쓰면 다른 포트로 띄우기 위함 (예: DASH_PORT=8766).
+    port = int(os.environ.get("DASH_PORT", "8765"))
     print(f"로컬 개발 대시보드 — 서버 DB 캐시: {CACHE}")
-    print("브라우저에서 http://localhost:8765/ (이 PC에서 돎, 운영 무관)")
-    dashboard.serve(8765)
+    print(f"브라우저에서 http://localhost:{port}/ (이 PC에서 돎, 운영 무관)")
+    dashboard.serve(port)
