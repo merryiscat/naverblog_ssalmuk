@@ -472,6 +472,21 @@ def _same_cluster(a: str, b: str) -> bool:
     return p >= 2 and la[:p] not in _GENERIC_LEAD
 
 
+# 노무·신고 실무 계열 — 사용자 요청(2026-09-07 "보조금 지원금 위주로")으로 하루 최대 1개만
+# 뽑는다. 퇴직연금·4대보험·주휴수당·하도급처럼 '받는 혜택'이 아니라 '분쟁·신고 절차'류가
+# 12일간 힌트에 박혀 블로그가 노무 틈새로 흘렀다. 받는 혜택(근로장려금·실업급여 등)은 marker에
+# 없어 보조금으로 취급 — 캡 대상이 아니다.
+LABOR_CAP = 1
+_LABOR_MARKERS = ("퇴직연금", "퇴직금", "4대보험", "주휴수당", "하도급", "근로계약",
+                  "부당해고", "해고", "수습", "임금체불", "산재", "중도인출", "원천",
+                  "최저임금", "연차수당", "주52시간", "고용보험")
+
+
+def _is_labor(kw: str) -> bool:
+    """노무·신고 실무 주제인가 (하루 1개 상한 대상)."""
+    return any(m in (kw or "") for m in _LABOR_MARKERS)
+
+
 def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
     """선정 오케스트레이터 — 점수 상위가 아니라 '전략에 맞는 조합'을 고른다.
 
@@ -556,6 +571,9 @@ def orchestrate_selection(conn: sqlite3.Connection, short: list[dict]) -> dict:
   롱테일을 우선한다. 서로 다른 헤드·상황을 다루도록 골라 주제 중복을 피하라
 - **모든 주제는 정책·지원금이다 (완전 특화, 2026-08-30)** — 비정책 소재는 고르지 마라.
   대신 대상(청년·소상공인·육아·주거·고용·노인 등)과 제도를 서로 다르게 골라 소재 다양성을 낸다
+- **일반인이 받는 보조금·지원금을 우선하라 (2026-09-07 사용자)** — 부모급여·아동수당·에너지바우처·
+  문화누리카드·청년월세·기초연금·근로장려금·자녀장려금·주거급여처럼 '받는 혜택' 위주로 다양하게.
+  퇴직연금·4대보험·주휴수당·하도급 같은 노무·신고 실무는 유입은 좋아도 **하루 1개까지만** 골라라
 - 헤드 단일어(예: "실업급여신청", "여행자보험")는 브리핑에 떠도 인용 못 받으니 피하라
 - **⚠유사 과거글 표식**: 이미 발행한 글과 의미가 겹친다는 뜻. 거의 같은 각도면 중복이니 피하고,
   같은 제도라도 다른 각도·대상·상황이면 OK. **'인용받은' 유사글이 있는 계열은 잘 되는 유형**이니
@@ -584,21 +602,36 @@ JSON만 출력: {{"selected": [0, 1, 2], "reserve": [3, 4], "rationale": "선정
     # reserve는 배열이 기본이지만 과거 형식(정수 하나)도 받아준다 (LLM 응답 관용)
     res_raw = pick.get("reserve", [])
     res = [int(i) for i in (res_raw if isinstance(res_raw, list) else [res_raw])][:n_res]
-    if len(sel) < n_sel or any(not (0 <= i < len(short)) for i in sel + res):
+    # LLM이 선정수보다 적게(예: 5개 중 3개) 줘도 폴백으로 버리지 않고 아래 백필로 채운다
+    # (2026-09-07: 이 과엄격 검증이 오늘 발굴을 결정론 폴백으로 떨궈 다양성 규칙을 우회했다).
+    # 인덱스가 범위 밖인 진짜 이상 응답만 예외로 올린다.
+    if not sel or any(not (0 <= i < len(short)) for i in sel + res):
         raise ValueError(f"오케스트레이터 응답 이상: {pick}")
-    # 하루 내 같은 계열 중복 제거 (2026-09-06) — '난임 며칠'+'난임 유급'을 같은 날 둘 다
-    # 뽑는 것 방지. selected 우선순위를 유지하며 계열이 겹치면 건너뛰고, 빠진 자리는
-    # reserve→남은 후보로 채운 뒤 다시 selected/reserve로 나눈다.
+    # 최종 선정 규칙 (우선순위 유지 + 백필):
+    #  ①하루 내 같은 계열 1개 (난임 며칠+유급 동시선정 방지, 2026-09-06)
+    #  ②노무·신고 실무는 하루 LABOR_CAP개까지 (보조금 다양성, 2026-09-07)
+    # 비노무 후보가 부족하면 노무 상한을 풀어 굶지 않게 한다.
     order = sel + res + [i for i in range(len(short)) if i not in sel and i not in res]
-    picks, leads = [], []
-    for i in order:
-        kw = short[i]["keyword"]
-        if any(_same_cluster(kw, k) for k in leads):
-            continue
-        leads.append(kw)
-        picks.append(i)
-        if len(picks) >= n_sel + n_res:
-            break
+
+    def _build(labor_cap):
+        picks, leads, labor_n = [], [], 0
+        for i in order:
+            kw = short[i]["keyword"]
+            if any(_same_cluster(kw, k) for k in leads):
+                continue
+            lab = _is_labor(kw)
+            if lab and labor_n >= labor_cap:
+                continue
+            leads.append(kw)
+            picks.append(i)
+            if lab:
+                labor_n += 1
+            if len(picks) >= n_sel + n_res:
+                break
+        return picks
+    picks = _build(LABOR_CAP)
+    if len(picks) < n_sel:            # 비노무 후보 부족 — 노무 상한 풀어 채움
+        picks = _build(n_sel)
     sel, res = picks[:n_sel], picks[n_sel:n_sel + n_res]
     # 분야 분산 강제는 제거 (2026-08-26): 구체 질문형 롱테일 집중 전략으로 전환하면서
     # selected가 라이프·인사이트(정책)로 쏠리는 것은 의도된 결과다.
@@ -752,7 +785,7 @@ def discover(conn: sqlite3.Connection | None = None) -> list[dict]:
             "INSERT INTO decisions (date, input_summary, decision_json, rationale) VALUES (?, ?, ?, ?)",
             (today, json.dumps({"shortlist": [c["keyword"] for c in short]}, ensure_ascii=False),
              json.dumps({"purpose": "topic-orchestration",
-                         "selected": [short[i]["keyword"] for i in pick["selected"]]},
+                         "selected": pick["selected"]},  # 이미 키워드 리스트 (2026-09-07)
                         ensure_ascii=False),
              pick["rationale"]))
         conn.commit()
