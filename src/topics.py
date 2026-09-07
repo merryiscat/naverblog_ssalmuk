@@ -759,14 +759,18 @@ def discover(conn: sqlite3.Connection | None = None) -> list[dict]:
         chosen = {kw: "selected" for kw in pick["selected"]}
         for kw in pick["reserve"]:
             chosen.setdefault(kw, "reserve")
-        # 검증기 교체 등으로 reserve가 selected와 겹치면 다음 후보로 보충 (n_res개 확보)
+        # 검증기 교체 등으로 reserve가 selected와 겹치면 다음 후보로 보충 (n_res개 확보).
+        # 단 이미 뽑힌 것과 같은 계열은 예비로도 넣지 않는다 — 게이트 탈락 시 reserve가
+        # 승격되면 같은 계열이 같은 날 또 나올 수 있어서다 (2026-09-07).
         have_res = sum(1 for v in chosen.values() if v == "reserve")
         for c in short:
             if have_res >= n_res:
                 break
-            if c["keyword"] not in chosen:
-                chosen[c["keyword"]] = "reserve"
-                have_res += 1
+            kw = c["keyword"]
+            if kw in chosen or any(_same_cluster(kw, k) for k in chosen):
+                continue
+            chosen[kw] = "reserve"
+            have_res += 1
 
         for c in top:
             status = chosen.get(c["keyword"], "candidate")
