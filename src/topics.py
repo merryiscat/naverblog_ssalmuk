@@ -630,7 +630,10 @@ JSON만 출력: {{"selected": [0, 1, 2], "reserve": [3, 4], "rationale": "선정
                 break
         return picks
     picks = _build(LABOR_CAP)
-    if len(picks) < n_sel:            # 비노무 후보 부족 — 노무 상한 풀어 채움
+    # 노무 상한은 웬만하면 유지 — 5칸을 억지로 채우려고 노무를 2개 이상 넣지 않는다.
+    # 단 최소 발행 목표(DAILY_PUBLISH_TARGET)도 못 채울 만큼 풀이 노무뿐이면 그때만 완화.
+    floor = min(n_sel, getattr(config, "DAILY_PUBLISH_TARGET", 3))
+    if len(picks) < floor:
         picks = _build(n_sel)
     sel, res = picks[:n_sel], picks[n_sel:n_sel + n_res]
     # 분야 분산 강제는 제거 (2026-08-26): 구체 질문형 롱테일 집중 전략으로 전환하면서
